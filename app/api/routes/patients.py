@@ -11,8 +11,8 @@
     
 """Patient-related API routes."""
 
-from fastapi import APIRouter, Depends, Body
-from app.api.deps import get_current_user
+from fastapi import APIRouter, Depends, Body, HTTPException
+from app.api.deps import get_current_user, require_role
 from app.core import firebase
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -20,12 +20,18 @@ router = APIRouter(prefix="/patients", tags=["patients"])
 
 @router.get("/")
 async def list_patients(user=Depends(get_current_user)):
-    docs = (
-        firebase.db
-        .collection("patients")
-        .where("created_by", "==", user["uid"])
-        .stream()
-    )
+    """List patients.
+
+    - If caller is a doctor/caregiver they can list all patients.
+    - Otherwise only return patients created by the caller.
+    """
+    role = user.get("role") or user.get("roles")
+    coll = firebase.db.collection("patients")
+
+    if role == "doctor" or (isinstance(role, list) and "doctor" in role):
+        docs = coll.stream()
+    else:
+        docs = coll.where("created_by", "==", user["uid"]).stream()
 
     return {
         "items": [
