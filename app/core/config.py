@@ -1,19 +1,21 @@
-# app/core/config.py
-from __future__ import annotations
+from pydantic_settings import BaseSettings
+from pathlib import Path
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
-    # Where your HuggingFace emotion model folder is (local path)
-    EMOTION_MODEL_DIR: str = "models/emotion"
+    project_name: str = "mobile-caregiving-backend"
 
-    # Dialogflow (optional)
-    DIALOGFLOW_PROJECT_ID: str = ""
+    firebase_credentials: str | None = None
+    firestore_emulator_host: str | None = None
+
+    EMOTION_MODEL_DIR: str = str(BASE_DIR / "ml" / "member2_chatbot" / "models" / "emotion_model")
+
+    # ✅ Add these:
+    DIALOGFLOW_PROJECT_ID: str = "elderly-voice-bot-xvja"
     DIALOGFLOW_LANGUAGE_CODE: str = "en"
 
-    # If you want to read from a .env file, keep this:
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
-
+    class Config:
+        env_file = ".env"
 
 settings = Settings()

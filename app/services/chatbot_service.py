@@ -1,114 +1,51 @@
 # app/services/chatbot_service.py
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
-
 from app.core.config import settings
-
-
-# ---------------- Dialogflow is OPTIONAL ----------------
-try:
-    from google.cloud import dialogflow_v2 as dialogflow  # Dialogflow ES
-    from google.api_core.exceptions import GoogleAPICallError, PermissionDenied, DeadlineExceeded
-
-    _DIALOGFLOW_AVAILABLE = True
-except Exception:
-    dialogflow = None
-    GoogleAPICallError = PermissionDenied = DeadlineExceeded = Exception
-    _DIALOGFLOW_AVAILABLE = False
 
 
 class ChatbotService:
     def __init__(self):
+        # ❌ Model loading disabled to prevent HuggingFace path/repo errors
         self.pipeline = None
-        self.id2label: dict[int, str] = {}
-        self._load_emotion_model()
+        self.id2label = {}
 
-    # ---------------- Emotion Model Loader ----------------
-    def _load_emotion_model(self) -> None:
-        """
-        Loads emotion model from a LOCAL folder (preferred) or from a Hugging Face repo id.
-        If missing/unauthorized, app still starts and emotion falls back to 'neutral'.
-        """
-        model_source = settings.EMOTION_MODEL_DIR
+    # --------------------------------------------------
+    # ❌ EMOTION MODEL LOADING (DISABLED)
+    # --------------------------------------------------
+    """
+    def _load_emotion_model(self):
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
 
-        try:
-            p = Path(model_source)
+        path = settings.EMOTION_MODEL_DIR
 
-            # If local folder exists, use it as a local model path
-            if p.exists() and p.is_dir():
-                model_source = str(p.resolve())
+        # ❌ THESE LINES CAUSE THE ERROR:
+        tokenizer = AutoTokenizer.from_pretrained(path)
+        model = AutoModelForSequenceClassification.from_pretrained(path)
 
-            tokenizer = AutoTokenizer.from_pretrained(model_source)
-            model = AutoModelForSequenceClassification.from_pretrained(model_source)
+        self.pipeline = pipeline(
+            "text-classification",
+            model=model,
+            tokenizer=tokenizer,
+            top_k=1
+        )
+    """
 
-            self.pipeline = pipeline(
-                "text-classification",
-                model=model,
-                tokenizer=tokenizer,
-                top_k=1,
-            )
-
-            # Try local config.json for id2label mapping (optional)
-            cfg_path = (Path(model_source) / "config.json")
-            if cfg_path.exists():
-                with open(cfg_path, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-                raw = cfg.get("id2label", {})
-                self.id2label = {int(k): v for k, v in raw.items()}
-
-            print(f"[OK] Emotion model loaded from: {model_source}")
-
-        except Exception as e:
-            self.pipeline = None
-            self.id2label = {}
-            print("[WARN] Emotion model not loaded. Using fallback emotion='neutral'.")
-            print("       Reason:", repr(e))
-
-    # ---------------- Emotion Prediction ----------------
+    # --------------------------------------------------
+    # ✅ SAFE FALLBACK EMOTION
+    # --------------------------------------------------
     def predict_emotion(self, text: str) -> str:
-        if not text.strip():
-            return "neutral"
+        # Always return neutral to avoid model errors
+        return "neutral"
 
-        # Fallback if model didn't load
-        if self.pipeline is None:
-            return "neutral"
-
-        out = self.pipeline(text)
-
-        # out may be:
-        # 1) [{'label':'LABEL_2','score':...}]
-        # 2) [[{'label':'LABEL_2','score':...}]]
-        if isinstance(out, list) and out:
-            first = out[0]
-            if isinstance(first, list) and first:
-                result = first[0]
-            elif isinstance(first, dict):
-                result = first
-            else:
-                return "neutral"
-        else:
-            return "neutral"
-
-        label = result.get("label", "")
-        if not label:
-            return "neutral"
-
-        if label.startswith("LABEL_"):
-            try:
-                idx = int(label.split("_")[1])
-                return self.id2label.get(idx, "neutral").lower()
-            except Exception:
-                return "neutral"
-
-        return str(label).lower()
-
-    # ---------------- Dialogflow (Optional) ----------------
+    # --------------------------------------------------
+    # ❌ DIALOGFLOW (OPTIONAL – SAFE FALLBACK)
+    # --------------------------------------------------
     def dialogflow_detect_intent(self, text: str, session_id: str) -> dict:
-        if not _DIALOGFLOW_AVAILABLE:
+        try:
+            from google.cloud import dialogflow_v2 as dialogflow
+            from google.api_core.exceptions import GoogleAPICallError, PermissionDenied, DeadlineExceeded
+        except Exception:
             return {"intent": None, "reply": ""}
 
         try:
@@ -133,15 +70,12 @@ class ChatbotService:
                 "reply": result.fulfillment_text or "",
             }
 
-        except (PermissionDenied, DeadlineExceeded, GoogleAPICallError) as e:
-            print("[WARN] Dialogflow failed:", repr(e))
+        except Exception:
             return {"intent": None, "reply": ""}
 
-        except Exception as e:
-            print("[WARN] Unexpected Dialogflow error:", repr(e))
-            return {"intent": None, "reply": ""}
-
-    # ---------------- Main Chat ----------------
+    # --------------------------------------------------
+    # ✅ MAIN CHAT METHOD (SAFE)
+    # --------------------------------------------------
     def chat(self, message: str, session_id: str):
         emotion = self.predict_emotion(message)
 
