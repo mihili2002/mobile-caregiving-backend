@@ -1,81 +1,117 @@
-"""Health records routes.
+# app/api/routes/health_records.py
+print("🔥 LOADED UPDATED health_records.py")
 
-Patients can submit health data which is stored in Firestore. Doctors
-can list and review records. ML inference is used to generate suggested
-nutrition targets; a doctor must approve suggestions before they are
-visible to the patient.
 """
+Health records routes.
+
+Patients submit health data which is stored in Firestore.
+ML generates a suggested nutrition + meal plan.
+Doctor approval is required before the plan is visible to patients.
+"""
+
 from fastapi import APIRouter, Depends, Body, HTTPException
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional
+
 from app.api.deps import get_current_user, require_role
 from app.core import firebase
 from app.models.health_data import HealthData
-from app.services import ml_inference
-from typing import Dict
-from datetime import datetime, timezone
-
+from app.services.meal_plan_pipeline import build_meal_plan
 
 router = APIRouter(prefix="/health_records", tags=["health_records"])
 
 
+def _bool_to_yesno(v: Optional[bool]) -> str:
+    if v is True:
+        return "Yes"
+    if v is False:
+        return "No"
+    return "nan"
+
+
+def _first(*vals):
+    for v in vals:
+        if v is not None:
+            return v
+    return None
+
+
 @router.post("/", status_code=201)
-async def submit_record(
-    payload: HealthData = Body(...),
-    user=Depends(get_current_user)
-):
-    """Patient submits a health record. ML suggestions are stored but
-    require doctor approval before being published to the patient view."""
-    # Basic ownership check: patient can only create records for themselves
+async def submit_record(payload: HealthData = Body(...), user=Depends(get_current_user)):
     if user["uid"] != payload.patient_id and user.get("role") != "doctor":
-        raise HTTPException(status_code=403, detail="Cannot submit record for this patient")
+        raise HTTPException(status_code=403, detail="Unauthorized submission")
 
-    data = payload.dict(exclude_none=True)
+    data: Dict[str, Any] = payload.dict(exclude_none=True)
 
-    # Compute BMI if height/weight present in vitals
-    vitals: Dict = data.get("vitals") or {}
-    height_cm = vitals.get("height_cm")
-    weight_kg = vitals.get("weight_kg")
-    if height_cm and weight_kg:
+    vitals: Dict[str, Any] = data.get("vitals") or {}
+
+    # Prefer root fields, fallback to vitals
+    height_cm = _first(data.get("height_cm"), vitals.get("height_cm"))
+    weight_kg = _first(data.get("weight_kg"), vitals.get("weight_kg"))
+    bmi = _first(data.get("bmi"), vitals.get("bmi"))
+
+    # Compute BMI if missing and we have height+weight
+    if bmi is None and height_cm and weight_kg:
         try:
-            h_m = float(height_cm) / 100.0
-            bmi = float(weight_kg) / (h_m * h_m)
-            vitals["bmi"] = round(bmi, 2)
-            data["vitals"] = vitals
+            bmi = float(weight_kg) / ((float(height_cm) / 100) ** 2)
+            bmi = round(bmi, 2)
         except Exception:
-            pass
+            bmi = None
 
-    # Run ML nutrition prediction (non-blocking in production; sync here)
-    suggested = None
+    # Build ML features (MATCHES training column names)
     try:
-        features = {
-            "age": data.get("age") or 0,
-            "weight": weight_kg or 0,
-            "height": height_cm or 0,
-            # Add more features mapping as required by the model
+        ml_features = {
+            "Age": data.get("age"),
+            "Gender": data.get("gender"),
+            "Height_cm": height_cm,
+            "Weight_kg": weight_kg,
+            "BMI": bmi,
+            "Chronic_Disease": data.get("chronic_disease"),
+
+            "Blood_Pressure_Systolic": _first(data.get("blood_pressure_systolic"), vitals.get("blood_pressure_systolic")),
+            "Blood_Pressure_Diastolic": _first(data.get("blood_pressure_diastolic"), vitals.get("blood_pressure_diastolic")),
+            "Cholesterol_Level": _first(data.get("cholesterol_level"), vitals.get("cholesterol_level")),
+            "Blood_Sugar_Level": _first(data.get("blood_sugar_level"), vitals.get("blood_sugar_level")),
+
+            # These are bools in API model → strings for ML encoders
+            "Genetic_Risk_Factor": _bool_to_yesno(data.get("genetic_risk_factor")),
+            "Alcohol_Consumption": _bool_to_yesno(data.get("alcohol_consumption")),
+            "Smoking_Habit": _bool_to_yesno(data.get("smoking_habit")),
+
+            "Allergies": data.get("allergies"),
+            "Daily_Steps": data.get("daily_steps"),
+            "Exercise_Frequency": data.get("exercise_frequency"),
+            "Sleep_Hours": data.get("sleep_hours"),
+            "Dietary_Habits": data.get("dietary_habits"),
+            "Caloric_Intake": data.get("caloric_intake"),
+            "Protein_Intake": data.get("protein_intake"),
+            "Carbohydrate_Intake": data.get("carbohydrate_intake"),
+            "Fat_Intake": data.get("fat_intake"),
+            "Preferred_Cuisine": data.get("preferred_cuisine"),
+            "Food_Aversions": data.get("food_aversions"),
         }
-        suggested = ml_inference.predict_nutrition(features)
-    except Exception:
-        suggested = None
+
+        suggested_plan = build_meal_plan(ml_features)
+
+    except Exception as e:
+        suggested_plan = {"error": "Meal plan generation failed", "details": str(e)}
 
     record = {
         **data,
         "created_by": user["uid"],
-        "suggested_nutrition": suggested,
+        "suggested_meal_plan": suggested_plan,
         "nutrition_approved": False,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    record["timestamp"] = datetime.now(timezone.utc).isoformat()
-
     doc_ref = firebase.db.collection("health_records").add(record)
-    return {"id": doc_ref[1].id, "suggested_nutrition": suggested}
+    return {"id": doc_ref[1].id, "suggested_meal_plan": suggested_plan}
 
 
 @router.get("/")
 async def list_records(user=Depends(get_current_user)):
-    """List health records.
-
-    - Doctors see all records; patients see only their own records.
-    """
     coll = firebase.db.collection("health_records")
+
     role = user.get("role") or user.get("roles")
     if role == "doctor" or (isinstance(role, list) and "doctor" in role):
         docs = coll.stream()
@@ -87,10 +123,9 @@ async def list_records(user=Depends(get_current_user)):
 
 @router.post("/{record_id}/approve")
 async def approve_suggestion(record_id: str, user=Depends(require_role(["doctor"]))):
-    """Doctor approves a suggested nutrition plan for a record."""
     ref = firebase.db.collection("health_records").document(record_id)
     doc = ref.get()
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Record not found")
     ref.update({"nutrition_approved": True})
-    return {"message": "Approved"}
+    return {"message": "Meal plan approved"}
