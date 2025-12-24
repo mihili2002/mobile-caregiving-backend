@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+ENV/
+.venv/
+
+# VS Code
+.vscode/
+
+# Environment files
+.env
+secrets/
+
+# Trained models and ML artifacts
+ml/trained_models/
+*.joblib
+*.model
+
+# Firebase keys
+**/firebase-service-account*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+app/core/firebase_key.json
+
+ml/**/trained/*.pkl
