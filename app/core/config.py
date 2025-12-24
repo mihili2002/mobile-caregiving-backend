@@ -1,17 +1,19 @@
-"""Application configuration.
+# app/core/config.py
+from __future__ import annotations
 
-Reads environment variables for service configuration.
-"""
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    project_name: str = "mobile-caregiving-backend"
-    firebase_credentials: str | None = None  # Path to service account JSON
-    firestore_emulator_host: str | None = None
+    # Where your HuggingFace emotion model folder is (local path)
+    EMOTION_MODEL_DIR: str = "models/emotion"
 
-    class Config:
-        env_file = ".env"
+    # Dialogflow (optional)
+    DIALOGFLOW_PROJECT_ID: str = ""
+    DIALOGFLOW_LANGUAGE_CODE: str = "en"
+
+    # If you want to read from a .env file, keep this:
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
 settings = Settings()
