@@ -30,3 +30,21 @@ Thumbs.db
 app/core/firebase_key.json
 
 ml/**/trained/*.pkl
+
+# ML models
+app/ml/**/models/
+app/ml/**/trained/
+
+# HuggingFace / Transformers
+*.safetensors
+*.bin
+*.joblib
+*.pt
+*.onnx
+
+ml/member2_chatbot/models/emotion_model/config.json
+ml/member2_chatbot/models/emotion_model/model.safetensors
+ml/member2_chatbot/models/emotion_model/special_tokens_map.json
+ml/member2_chatbot/models/emotion_model/tokenizer_config.json
+ml/member2_chatbot/models/emotion_model/vocab.txt
+ml/member2_chatbot/models/emotion_model/tokenizer.json
