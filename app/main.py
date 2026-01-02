@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from app.core.firebase import init_firebase
-from app.api.routes import auth, patients, caregivers, health_records
+from app.api.routes import auth, patients, caregivers
+from app.api.routes.elder import health_submissions, meal_plans as elder_meal_plans
+from app.api.routes.doctor import dashboard as doctor_dashboard, meal_plans as doctor_meal_plans
 from app.services import ml_inference
 from pathlib import Path
 
@@ -36,4 +38,9 @@ async def health_check():
 app.include_router(auth.router)
 app.include_router(patients.router)
 app.include_router(caregivers.router)
-app.include_router(health_records.router)
+app.include_router(health_submissions.router)
+app.include_router(elder_meal_plans.router)
+
+app.include_router(doctor_dashboard.router)
+app.include_router(doctor_meal_plans.router)
+
