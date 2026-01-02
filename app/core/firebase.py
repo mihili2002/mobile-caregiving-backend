@@ -8,6 +8,7 @@ tokens using the Firebase Admin SDK and accesses Firestore securely.
 """
 
 import os
+from pathlib import Path
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 
@@ -31,23 +32,32 @@ def init_firebase():
     if firebase_admin._apps:
         return
 
-    # Try environment variable first
-    cred_path = os.environ.get(
-        "FIREBASE_CREDENTIALS",
-        "app/core/firebase_key.json"
-    )
+    # --------------------------------------------------
+    # Resolve credentials path SAFELY
+    # --------------------------------------------------
+    env_path = os.environ.get("FIREBASE_CREDENTIALS")
 
-    if not os.path.exists(cred_path):
+    if env_path:
+        cred_path = Path(env_path)
+    else:
+        # Default to app/core/firebase_key.json relative to THIS file
+        cred_path = Path(__file__).resolve().parent / "firebase_key.json"
+
+    if not cred_path.exists():
         raise RuntimeError(
             f"Firebase credentials not found at: {cred_path}\n"
-            "Set FIREBASE_CREDENTIALS env var or place firebase_key.json correctly."
+            "Fix one of the following:\n"
+            "1) Set FIREBASE_CREDENTIALS env var to a valid JSON file\n"
+            "2) Place firebase_key.json in app/core/\n"
         )
 
+    # --------------------------------------------------
     # Initialize Firebase Admin
-    cred = credentials.Certificate(cred_path)
+    # --------------------------------------------------
+    cred = credentials.Certificate(str(cred_path))
     _firebase_app = firebase_admin.initialize_app(cred)
 
     # Initialize Firestore client
     db = firestore.client()
 
-    print("Firebase Admin initialized successfully.")
+    print(f"Firebase Admin initialized successfully using: {cred_path}")

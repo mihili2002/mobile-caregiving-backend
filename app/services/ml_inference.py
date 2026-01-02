@@ -73,29 +73,12 @@ def get_model(name: str):
 # ------------------------------------------------------------------
 # Member 1 – Meal Plan / Nutrition Prediction
 # ------------------------------------------------------------------
-def predict_nutrition(features: Dict[str, float]) -> Dict[str, float]:
+# app/services/ml_inference.py
+
+from ml.member1_meal_plan.inference import predict_nutrition as _predict
+
+def predict_nutrition(features: dict) -> dict:
     """
-    Predict nutrition targets for an elder.
-
-    Args:
-        features: dictionary of numeric features
-                  (must match training feature order!)
-
-    Returns:
-        Dictionary with calorie, protein, carbs, fats
+    Wrapper for Member1 nutrition + meal plan prediction
     """
-    model = get_model("nutrition")
-
-    # NOTE:
-    # Feature order MUST match training time
-    input_vector = [list(features.values())]
-
-    raw_preds = model.predict(input_vector)
-    preds = raw_preds[0]
-
-    return {
-        "Recommended_Calories": float(preds[0]),
-        "Recommended_Protein": float(preds[1]),
-        "Recommended_Carbs": float(preds[2]),
-        "Recommended_Fats": float(preds[3]),
-    }
+    return _predict(features)
