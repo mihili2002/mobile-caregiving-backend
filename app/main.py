@@ -26,7 +26,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 from app.core.firebase import init_firebase
-from app.api.routes import auth, patients, caregivers
+from app.api.routes import auth, patients, caregivers, ai_routes, schedule_routes
 from app.api.routes.elder import health_submissions, meal_plans as elder_meal_plans
 from app.api.routes.doctor import dashboard as doctor_dashboard, meal_plans as doctor_meal_plans
 from app.api.routes.chatbot_routes import router as chatbot_router
@@ -302,3 +302,5 @@ app.include_router(elder_meal_plans.router)
 app.include_router(doctor_dashboard.router)
 app.include_router(doctor_meal_plans.router)
 app.include_router(chatbot_router)
+app.include_router(ai_routes.router)
+app.include_router(schedule_routes.router)
