@@ -17,18 +17,33 @@ def load_models():
     
     # print("Loading AI Models...")
     try:
-        # Assuming app.py is run from the root, so 'models/' is available
-        base_path = os.path.join('ml', 'models')
+        # Resolve Project Root (2 levels up from app/services/__init__.py)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
         
-        model_completion = joblib.load(os.path.join(base_path, 'completion_model.joblib'))
-        model_delay      = joblib.load(os.path.join(base_path, 'delay_model.joblib'))
-        model_retries    = joblib.load(os.path.join(base_path, 'retries_model.joblib'))
-        model_snooze     = joblib.load(os.path.join(base_path, 'snooze_model.joblib'))
-        model_escalation = joblib.load(os.path.join(base_path, 'escalation_model.joblib'))
+        base_path = os.path.join(project_root, 'ml', 'models')
         
-        # print("✅ All 5 Models Loaded Successfully!")
+        paths = {
+            'completion': os.path.join(base_path, 'completion_model.joblib'),
+            'delay': os.path.join(base_path, 'delay_model.joblib'),
+            'retries': os.path.join(base_path, 'retries_model.joblib'),
+            'snooze': os.path.join(base_path, 'snooze_model.joblib'),
+            'escalation': os.path.join(base_path, 'escalation_model.joblib')
+        }
+        
+        if not os.path.exists(base_path):
+            print(f"Warning: Model directory not found: {base_path}. Skipping model loading.")
+            return
+
+        model_completion = joblib.load(paths['completion']) if os.path.exists(paths['completion']) else None
+        model_delay      = joblib.load(paths['delay']) if os.path.exists(paths['delay']) else None
+        model_retries    = joblib.load(paths['retries']) if os.path.exists(paths['retries']) else None
+        model_snooze     = joblib.load(paths['snooze']) if os.path.exists(paths['snooze']) else None
+        model_escalation = joblib.load(paths['escalation']) if os.path.exists(paths['escalation']) else None
+        
+        print("AI Models verified/loaded.")
     except Exception as e:
-        print(f"❌ Error loading models: {e}")
-        print("Make sure your .joblib files are in the 'models/' folder.")
+        print(f"Error loading models: {e}")
+        print("Make sure your .joblib files are in the 'ml/models/' folder.")
 
 # Ensure we have the encoder too if needed globally, mainly used in extractor.py

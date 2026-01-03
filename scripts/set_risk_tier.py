@@ -5,7 +5,7 @@ import sys
 
 # Initialize Firebase (reuses existing credentials if possible)
 try:
-    cred = credentials.Certificate("serviceAccountKey.json")
+    cred = credentials.Certificate("firebase_key.json")
     firebase_admin.initialize_app(cred)
 except ValueError:
     pass # Already initialized
