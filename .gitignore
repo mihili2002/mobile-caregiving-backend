@@ -48,3 +48,5 @@ ml/member2_chatbot/models/emotion_model/special_tokens_map.json
 ml/member2_chatbot/models/emotion_model/tokenizer_config.json
 ml/member2_chatbot/models/emotion_model/vocab.txt
 ml/member2_chatbot/models/emotion_model/tokenizer.json
+git rm --cached keys/dialogflow.json
+git rm --cached keys/firebase_key.json
