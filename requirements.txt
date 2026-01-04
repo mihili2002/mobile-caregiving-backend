@@ -13,3 +13,26 @@ numpy
 scikit-learn
 
 python-multipart
+
+flask
+flask-cors
+firebase-admin
+pydantic
+python-multipart
+
+pillow
+pytesseract
+pdf2image
+opencv-python
+numpy
+python-dotenv
+requests
+scikit-learn
+joblib
+pandas
+sentence-transformers
+faiss-cpu
+
+fastapi
+uvicorn
+

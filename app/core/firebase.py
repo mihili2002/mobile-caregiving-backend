@@ -24,23 +24,28 @@ def init_firebase() -> None:
             _db = firestore.client()
         return
 
-    env_path = os.getenv("FIREBASE_CREDENTIALS")
+    # --------------------------------------------------
+    # Resolve credentials path SAFELY
+    # --------------------------------------------------
+    env_path = os.environ.get("FIREBASE_CREDENTIALS")
 
     if env_path:
-        cred_path = Path(env_path).expanduser()
-        if not cred_path.is_absolute():
-            project_root = Path(__file__).resolve().parents[2]
-            cred_path = project_root / cred_path
+        cred_path = Path(env_path)
     else:
-        project_root = Path(__file__).resolve().parents[2]
-        cred_path = project_root / "keys" / "firebase_key.json"
+        # Default to app/core/firebase_key.json relative to THIS file
+        cred_path = Path(__file__).resolve().parent / "firebase_key.json"
 
     if not cred_path.exists():
         raise RuntimeError(
             f"Firebase credentials not found at: {cred_path}\n"
-            "Set FIREBASE_CREDENTIALS env var or place firebase_key.json correctly."
+            "Fix one of the following:\n"
+            "1) Set FIREBASE_CREDENTIALS env var to a valid JSON file\n"
+            "2) Place firebase_key.json in app/core/\n"
         )
 
+    # --------------------------------------------------
+    # Initialize Firebase Admin
+    # --------------------------------------------------
     cred = credentials.Certificate(str(cred_path))
     _firebase_app = firebase_admin.initialize_app(cred)
 
@@ -69,3 +74,4 @@ def verify_id_token(id_token: str):
     """
     init_firebase()
     return auth.verify_id_token(id_token)
+    print(f"Firebase Admin initialized successfully using: {cred_path}")
