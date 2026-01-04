@@ -1,17 +1,16 @@
-
-from flask import Blueprint, request, jsonify
+from fastapi import APIRouter, HTTPException, Query, Body
 from firebase_admin import firestore
 from google.cloud.firestore import FieldFilter, And
 from datetime import datetime
+from typing import Optional, Dict, Any, List
 
-behavior_bp = Blueprint('behavior_bp', __name__)
-db = firestore.client()
+router = APIRouter(prefix="/api/behavior", tags=["behavior"])
+# db = firestore.client() - Moved inside functions to avoid pre-init error
 
-@behavior_bp.route('/log_event', methods=['POST'])
-def log_event():
+@router.post('/log_event')
+async def log_event(data: Dict[str, Any] = Body(...)):
     try:
-        data = request.json
-        
+        db = firestore.client()
         # Support both old and new schema
         uid = data.get('uid') or data.get('elderId')
         task_id = data.get('taskId') or data.get('taskInstanceId') or data.get('metadata', {}).get('task_id')
@@ -22,7 +21,7 @@ def log_event():
         meta = data.get('meta') or data.get('metadata') or {}
 
         if not uid or not event_type:
-            return jsonify({"error": "uid and type required"}), 400
+            raise HTTPException(status_code=400, detail="uid and type required")
             
         # Standardize Event Type to Upper Case
         if event_type == 'task_completed': event_type = "TASK_COMPLETED"
@@ -40,18 +39,21 @@ def log_event():
             "created_at": datetime.utcnow()
         })
 
-        return jsonify({"message": "Event logged"}), 200
+        return {"message": "Event logged"}
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@behavior_bp.route('/analyze_missed_tasks', methods=['POST'])
-def analyze_missed_tasks():
+@router.post('/analyze_missed_tasks')
+async def analyze_missed_tasks(data: Dict[str, Any] = Body(...)):
     # Helper to scan a past date and log missed tasks if not already logged
     try:
-        data = request.json
+        db = firestore.client()
         uid = data.get('uid')
         date_str = data.get('date') # DD.MM.YYYY format stored in schedule
+
+        if not uid or not date_str:
+             raise HTTPException(status_code=400, detail="uid and date required")
 
         schedule_ref = db.collection('schedules').document(f"{uid}_{date_str}")
         doc = schedule_ref.get()
@@ -65,17 +67,19 @@ def analyze_missed_tasks():
                      missed.append(t['taskName'])
                      # Log it as an observation logic
         
-        return jsonify({"missed_count": len(missed), "missed_tasks": missed}), 200
+        return {"missed_count": len(missed), "missed_tasks": missed}
 
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@behavior_bp.route('/generate_insights', methods=['GET'])
-def generate_insights():
+@router.get('/generate_insights')
+async def generate_insights(uid: str = Query(...)):
     try:
-        uid = request.args.get('uid')
+        db = firestore.client()
         if not uid:
-            return jsonify({"error": "uid required"}), 400
+            raise HTTPException(status_code=400, detail="uid required")
 
         # 1. Fetch recent completion logs
         # 1. Fetch completion logs (No order_by to avoid Composite Index requirement)
@@ -132,16 +136,16 @@ def generate_insights():
         # This ensures they see the requirement is met immediately.
         # No fake suggestions. Real data only.
 
-        return jsonify({"insights": suggestions}), 200
+        return {"insights": suggestions}
 
     except Exception as e:
         print(f"Insight Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@behavior_bp.route('/save_journal_entry', methods=['POST'])
-def save_journal_entry():
+@router.post('/save_journal_entry')
+async def save_journal_entry(data: Dict[str, Any] = Body(...)):
     try:
-        data = request.json
+        db = firestore.client()
         # Expects: { 'id': '...', 'userId': '...', 'text': '...', 'type': '...', 'timestamp': '...' }
         
         # Determine ID
@@ -153,32 +157,34 @@ def save_journal_entry():
         # Save using Admin SDK (Bypasses Rules)
         db.collection('journal_entries').document(entry_id).set(data, merge=True)
         
-        return jsonify({"message": "Journal saved", "id": entry_id}), 200
+        return {"message": "Journal saved", "id": entry_id}
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@behavior_bp.route('/delete_journal_entry', methods=['POST'])
-def delete_journal_entry():
+@router.post('/delete_journal_entry')
+async def delete_journal_entry(data: Dict[str, Any] = Body(...)):
     try:
-        data = request.json
+        db = firestore.client()
         entry_id = data.get('id')
         if not entry_id:
-             return jsonify({"error": "id required"}), 400
+             raise HTTPException(status_code=400, detail="id required")
 
         db.collection('journal_entries').document(entry_id).delete()
-        return jsonify({"message": "Journal deleted"}), 200
+        return {"message": "Journal deleted"}
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@behavior_bp.route('/get_journal_entries', methods=['GET'])
-def get_journal_entries():
+@router.get('/get_journal_entries')
+async def get_journal_entries(userId: str = Query(...)):
     try:
-        user_id = request.args.get('userId')
-        if not user_id:
-            return jsonify({"error": "userId required"}), 400
+        db = firestore.client()
+        if not userId:
+            raise HTTPException(status_code=400, detail="userId required")
             
         docs = db.collection('journal_entries')\
-            .where(filter=FieldFilter('userId', '==', user_id))\
+            .where(filter=FieldFilter('userId', '==', userId))\
             .order_by('timestamp', direction=firestore.Query.DESCENDING)\
             .stream()
             
@@ -188,6 +194,6 @@ def get_journal_entries():
             entry['id'] = doc.id
             entries.append(entry)
             
-        return jsonify(entries), 200
+        return entries
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))

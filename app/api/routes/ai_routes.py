@@ -221,7 +221,7 @@ async def process_voice_command(req: VoiceCommandRequest):
                 pending_confirmations[session_id] = {"task_name": task_name, "time": time_str, "date_offset": date_offset, "uid": uid}
                 day_phrase = "tomorrow" if date_offset == 1 else "today"
                 return {
-                    "action": "reply", "reply": f"I heard '{task_name}' at {time_str} for {day_phrase}. Is that correct? Say yes or no.",
+                    "action": "reply", "reply": f"I heard you say: '{req.text}'. I heard '{task_name}' at {time_str} for {day_phrase}. Is that correct? Say yes or no.",
                     "intent": "task_creation", "is_confirmation": True, "task": {"name": task_name, "time": time_str, "date_offset": date_offset, "day_phrase": day_phrase}
                 }
 

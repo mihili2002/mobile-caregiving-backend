@@ -41,19 +41,28 @@ def parse_task_intent(text: str) -> dict:
         date_offset = 7
     
     # 4. Extract Time 
-    # First try standard format (HH:MM AM/PM or HH AM/PM)
+    # First try standard format (HH:MM AM/PM or HH.MM AM/PM) with support for dots in a.m./p.m.
     time_str = None
-    time_match = re.search(r'(\d{1,2}):(\d{2})\s*(am|pm)?', text)
+    # Regex explains:
+    # (\d{1,2})       : Hour (1-12 or 0-23)
+    # [:.]            : Separator (colon or dot)
+    # (\d{2})         : Minute
+    # \s*             : Optional space
+    # (a\.?m\.?|p\.?m\.?)? : Optional AM/PM with optional dots (case insensitive via flag or logic)
+    time_match = re.search(r'(\d{1,2})[:.](\d{2})\s*(a\.?m\.?|p\.?m\.?)?', text)
     
     if time_match:
         hour = int(time_match.group(1))
         minute = int(time_match.group(2))
         meridiem = time_match.group(3)
         
-        if meridiem == "pm" and hour < 12:
-            hour += 12
-        elif meridiem == "am" and hour == 12:
-            hour = 0
+        if meridiem:
+            meridiem = meridiem.replace(".", "").lower() # normalize p.m. -> pm
+            if meridiem == "pm" and hour < 12:
+                hour += 12
+            elif meridiem == "am" and hour == 12:
+                hour = 0
+        
         time_str = f"{hour:02d}:{minute:02d}"
     else:
         # Try to match 3-4 digit time like "245" or "1430"
@@ -92,14 +101,27 @@ def parse_task_intent(text: str) -> dict:
             start_inx = clean_text.find(marker) + len(marker)
             break
     
-    # Heuristic: End before the first time/date marker
+    # Heuristic: End before the first time/date marker (Using regex boundaries to avoid partial matches like 'at' in 'water')
     end_inx = len(clean_text)
+    # Slice only the relevant part to search
+    search_area = clean_text[start_inx:]
+    
+    first_end_marker_pos = len(search_area)
+    
     for marker in end_markers:
-        if marker in clean_text[start_inx:]:
-            marker_pos = clean_text.find(marker, start_inx)
-            if marker_pos < end_inx:
-                end_inx = marker_pos
-            break
+        # mimic \bMARKER\b but marker might contain spaces 'in the morning'
+        # simpler: check if marker exists in search_area
+        # To match "at" but not "water", we can check boundaries.
+        # But some markers have spaces.
+        # Robust way: re.search(r'\b' + re.escape(marker) + r'\b', search_area)
+        
+        m_match = re.search(r'\b' + re.escape(marker) + r'\b', search_area)
+        if m_match:
+            pos = m_match.start()
+            if pos < first_end_marker_pos:
+                first_end_marker_pos = pos
+                
+    end_inx = start_inx + first_end_marker_pos
             
     task_name = clean_text[start_inx:end_inx].strip()
     
