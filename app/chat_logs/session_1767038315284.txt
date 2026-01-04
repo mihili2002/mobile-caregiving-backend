@@ -1,0 +1,6 @@
+[2025-12-30 01:30:58]
+User: i smile 
+Bot: I didn't get that. Can you repeat?
+Emotion: joy
+Intent: Default Fallback Intent
+

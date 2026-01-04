@@ -1,0 +1,36 @@
+[2025-12-24 23:21:31]
+User: good morning it's a full day
+Bot: Hello good morning
+Emotion: joy
+Intent: SmallTalk.Greeting
+
+[2025-12-24 23:22:26]
+User: I am sick today
+Bot: Sorry, could you say that again?
+Emotion: sadness
+Intent: Default Fallback Intent
+
+[2025-12-24 23:22:40]
+User: I feel uncomfortable today
+Bot: Sorry, I didn't get that. Can you rephrase?
+Emotion: fear
+Intent: Default Fallback Intent
+
+[2025-12-24 23:22:56]
+User: I tried today
+Bot: Say that one more time?
+Emotion: joy
+Intent: Default Fallback Intent
+
+[2025-12-24 23:23:13]
+User: I am so sad can I talk
+Bot: I’m glad you reached out. What’s on your mind today?
+Emotion: sadness
+Intent: Daily.CheckIn
+
+[2025-12-24 23:24:04]
+User: I feel so sad
+Bot: I'm sorry you're feeling sad. I'm here for you. Do you want to talk about what's bothering you?
+Emotion: sadness
+Intent: Emotion.sad
+

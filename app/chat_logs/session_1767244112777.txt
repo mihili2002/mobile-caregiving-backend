@@ -1,0 +1,45 @@
+[2026-01-01 10:38:47]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-01 10:39:00]
+User: I feel sad
+Bot: I’m really sorry you feel so sad today. I’m here with you.
+What’s making you feel sad — lonely, family, health, or something else?
+Emotion: sadness
+Intent: Feeling_Sad
+
+[2026-01-01 10:39:25]
+User: I feel sick
+Bot: It sounds like something is worrying you. You’re not alone—I’m here with you. Would you like to talk about what’s making you anxious?
+Emotion: sadness
+Intent: Emotion.Anxious
+
+[2026-01-01 10:39:43]
+User: I feel tired
+Bot: It sounds like something is worrying you. You’re not alone—I’m here with you. Would you like to talk about what’s making you anxious?
+Emotion: sadness
+Intent: Emotion.Anxious
+
+[2026-01-01 10:40:43]
+User: no body visits me
+Bot: I’m sorry you’re in pain.
+Is the pain new, or have you had it for a long time?
+Emotion: anger
+Intent: Sad_Reason_Health
+
+[2026-01-01 10:44:12]
+User: i feel lonely
+Bot: I’m really sorry you’re feeling lonely. I’m here to keep you company. Would you like to talk about your day or maybe share a memory?
+Emotion: sadness
+Intent: Emotion.Lonely
+
+[2026-01-01 10:50:41]
+User: i feel so sad
+Bot: I’m really sorry you feel so sad today. I’m here with you.
+What’s making you feel sad — lonely, family, health, or something else?
+Emotion: sadness
+Intent: Feeling_Sad
+

@@ -1,0 +1,30 @@
+[2025-12-29 17:33:14]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2025-12-29 17:34:05]
+User: I feel very angry
+Bot: I’m sorry that you're feeling angry. It must be really tough. Do you want to talk about what's upsetting you?
+Emotion: anger
+Intent: Emotion.Angry
+
+[2025-12-29 17:34:25]
+User: I tried today
+Bot: I didn't get that. Can you repeat?
+Emotion: joy
+Intent: Default Fallback Intent
+
+[2025-12-29 17:34:39]
+User: I try
+Bot: Can you say that again?
+Emotion: joy
+Intent: Default Fallback Intent
+
+[2025-12-29 17:34:46]
+User: i cry
+Bot: If you're feeling down, how about drawing or painting something?
+Emotion: sadness
+Intent: none
+

@@ -1,0 +1,108 @@
+[2025-12-25 16:27:07]
+User: good morning
+Bot: Hello good morning
+Emotion: joy
+Intent: SmallTalk.Greeting
+
+[2025-12-25 16:27:17]
+User: how are you
+Bot: Thank you for talking to me. How are you feeling—emotionally or physically?
+Emotion: joy
+Intent: Daily.CheckIn
+
+[2025-12-25 16:27:33]
+User: I feel so happy today
+Bot: I’m glad to hear that. What made you feel this way today?
+Emotion: joy
+Intent: Daily.CheckIn.Followup
+
+[2025-12-25 16:27:46]
+User: my children came today
+Bot: Happy Birthday. Well, this calls for a celebration.
+Emotion: joy
+Intent: none
+
+[2025-12-25 16:32:09]
+User: my daughter came to see meet
+Bot: Nice to meet you too
+Emotion: joy
+Intent: none
+
+[2025-12-25 16:33:16]
+User: my day is good
+Bot: Sorry, could you say that again?
+Emotion: joy
+Intent: Default Fallback Intent
+
+[2025-12-25 16:34:24]
+User: good morning
+Bot: Hello good morning. How is the day
+Emotion: joy
+Intent: SmallTalk.Greeting
+
+[2025-12-25 16:34:35]
+User: my day is good
+Bot: Say that one more time?
+Emotion: joy
+Intent: Default Fallback Intent
+
+[2025-12-25 16:48:17]
+User: I feel good
+Bot: I’m here with you. How are you feeling right now—happy, sad, lonely, or something else?
+Emotion: joy
+Intent: Daily.CheckIn
+
+[2025-12-25 16:48:34]
+User: good morning
+Bot: Hello good morning. How is the day
+Emotion: joy
+Intent: SmallTalk.Greeting
+
+[2025-12-25 16:49:04]
+User: I am good
+Bot: I’m glad to hear that. What would you like to do today?
+Emotion: joy
+Intent: User-Feeling-good
+
+[2025-12-25 16:58:38]
+User: I want to talk to my children
+Bot: Of course, I’m right here. Tell me how you’re feeling at this moment.
+Emotion: joy
+Intent: Daily.CheckIn
+
+[2025-12-25 17:03:33]
+User: I want to talk to my children
+Bot: Of course, I’m right here. Tell me how you’re feeling at this moment.
+Emotion: joy
+Intent: Daily.CheckIn
+
+[2025-12-25 18:26:22]
+User: I miss my
+Bot: Thanks. I'm flattered.
+Emotion: sadness
+Intent: none
+
+[2025-12-25 18:26:36]
+User: I miss my children
+Bot: Nice to know you care.
+Emotion: sadness
+Intent: none
+
+[2025-12-25 18:27:57]
+User: hello
+Bot: Hello! How can I help you?
+Emotion: joy
+Intent: Default Welcome Intent
+
+[2025-12-25 18:28:13]
+User: I need your help
+Bot: Sure, I can help you 😊  How can i help you
+Emotion: joy
+Intent: User-Request
+
+[2025-12-25 18:28:28]
+User: I need to communicate with you
+Bot: Sorry, I didn't get that. Can you rephrase?
+Emotion: joy
+Intent: Default Fallback Intent
+

@@ -1,0 +1,42 @@
+[2026-01-02 23:59:44]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-02 23:59:59]
+User: I am
+Bot: Sorry, can you say that again?
+Emotion: joy
+Intent: Default Fallback Intent
+
+[2026-01-03 00:00:10]
+User: can you say I am here
+Bot: Okay, what can I help you with today?
+Emotion: joy
+Intent: none
+
+[2026-01-03 00:00:28]
+User: I am scared
+Bot: It sounds like something is worrying you. You’re not alone—I’m here with you. Would you like to talk about what’s making you anxious?
+Emotion: fear
+Intent: Emotion.Anxious
+
+[2026-01-03 00:01:14]
+User: summarize my mood yesterday
+Bot: In that time, you mostly felt **happy**. I noticed 21 emotion moments. For example: “just started today”. Also: “i feel weak”. Do you want a weekly summary too?
+Emotion: joy
+Intent: mood_summary_yesterday
+
+[2026-01-03 00:01:44]
+User: yes
+Bot: You can share whatever you’re comfortable with. I’m here to support you gently.
+Emotion: joy
+Intent: emotion-anxious-followup
+
+[2026-01-03 00:22:04]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+

@@ -1,0 +1,30 @@
+[2025-12-27 13:59:34]
+User: hello good morning
+Bot: Hello good morning. How is the day
+Emotion: joy
+Intent: SmallTalk.Greeting
+
+[2025-12-27 14:17:09]
+User: good morning are you there
+Bot: “Hi there! It’s nice to hear from you. What are you up to right now?
+Emotion: joy
+Intent: Can we talk
+
+[2025-12-27 14:17:50]
+User: I feel great today
+Bot: That’s perfectly okay 🌸 I’m here whenever you feel like talking.
+Emotion: joy
+Intent: Emotion.Happy
+
+[2025-12-27 14:43:15]
+User: good morning
+Bot: “Hi there! It’s nice to hear from you. What are you up to right now?
+Emotion: joy
+Intent: elder-greeting
+
+[2025-12-27 14:45:48]
+User: good morning
+Bot: “Hi there! It’s nice to hear from you. What are you up to right now?
+Emotion: joy
+Intent: elder-greeting
+

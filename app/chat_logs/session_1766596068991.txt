@@ -1,0 +1,19 @@
+[2025-12-24 23:04:19]
+User: good morning
+Bot: Hello good morning
+Emotion: joy
+Intent: SmallTalk.Greeting
+
+[2025-12-24 23:10:15]
+User: I feel so sad today
+Bot: I'm sorry you're feeling sad. I'm here for you. Do you want to talk about what's bothering you?
+Emotion: sadness
+Intent: Emotion.sad
+
+[2025-12-24 23:16:03]
+User: I feel so happy today
+Bot: That's wonderful! I'm glad you're feeling happy. 
+Would you like to talk about what made your day good?
+Emotion: joy
+Intent: Emotion.Happy
+

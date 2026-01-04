@@ -1,0 +1,6 @@
+[2025-12-30 01:11:47]
+User: i cry today
+Bot: Oh, don't be sad. Go do something you enjoy.
+Emotion: sadness
+Intent: none
+

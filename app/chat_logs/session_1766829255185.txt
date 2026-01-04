@@ -1,0 +1,27 @@
+[2025-12-27 15:24:27]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2025-12-27 15:24:42]
+User: I feel happy
+Bot: That makes me happy to hear 😊  
+Why are you feeling so happy today?
+Emotion: joy
+Intent: Feeling-Happy
+
+[2025-12-27 15:25:03]
+User: my son came to see me
+Bot: That is wonderful ❤️  
+Spending time with your children is very special.  
+What did you do together?
+Emotion: anger
+Intent: Happy-Reason-Family
+
+[2025-12-27 15:25:27]
+User: we chatted
+Bot: That sounds really lovely 😊 What did you talk about?
+Emotion: anger
+Intent: Activity_Talked
+

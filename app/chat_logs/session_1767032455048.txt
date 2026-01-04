@@ -1,0 +1,38 @@
+[2025-12-30 00:26:53]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2025-12-30 00:34:37]
+User: i feel sad today
+Bot: If you're feeling down, how about drawing or painting something?
+Emotion: sadness
+Intent: none
+
+[2025-12-30 00:37:27]
+User: I feel happy
+Bot: That’s wonderful 😊 Why are you happy today?
+Emotion: joy
+Intent: Feeling-Happy
+
+[2025-12-30 00:37:39]
+User: my son came today
+Bot: That is wonderful ❤️  
+Spending time with your children is very special.  
+What did you do together?
+Emotion: joy
+Intent: Happy-Reason-Family
+
+[2025-12-30 00:54:46]
+User: i feel angry today
+Bot: I’m sorry that you're feeling angry. It must be really tough. Do you want to talk about what's upsetting you?
+Emotion: anger
+Intent: Emotion.Angry
+
+[2025-12-30 01:08:59]
+User: i cry today
+Bot: Sad? Writing down what's troubling you may help.
+Emotion: sadness
+Intent: none
+

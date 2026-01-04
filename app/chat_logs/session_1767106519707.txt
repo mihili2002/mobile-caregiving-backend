@@ -1,0 +1,24 @@
+[2025-12-30 20:25:38]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2025-12-30 20:26:16]
+User: summarize my moodyesterday
+Bot: I couldn’t find any emotion records for that time. Would you like to tell me how you feel now?
+Emotion: sadness
+Intent: mood_summary_yesterday
+
+[2025-12-30 20:26:43]
+User: summarize my mood yesterday
+Bot: I couldn’t find any emotion records for that time. Would you like to tell me how you feel now?
+Emotion: joy
+Intent: mood_summary_yesterday
+
+[2025-12-30 20:27:07]
+User: summarize my mood today
+Bot: In that time, you mostly felt **happy**. I noticed 7 emotion moments. For example: “good morning”. Also: “summarize my yesterday mood”. Do you want a weekly summary too?
+Emotion: joy
+Intent: mood_summary_yesterday
+

@@ -1,0 +1,48 @@
+[2025-12-24 23:54:20]
+User: I tried I tried today
+Bot: Sorry, could you say that again?
+Emotion: anger
+Intent: Default Fallback Intent
+
+[2025-12-24 23:54:40]
+User: I dance today
+Bot: Can you say that again?
+Emotion: joy
+Intent: Default Fallback Intent
+
+[2025-12-24 23:56:57]
+User: I want to talk
+Bot: Of course, I’m right here. Tell me how you’re feeling at this moment.
+Emotion: joy
+Intent: Daily.CheckIn
+
+[2025-12-24 23:57:59]
+User: I am upset
+Bot: I'm sorry you're feeling sad. I'm here for you. Do you want to talk about what's bothering you?
+Emotion: anger
+Intent: Emotion.sad
+
+[2025-12-24 23:58:43]
+User: maybe later
+Bot: Thank you for sharing your feelings. I'm here to listen whenever you want. You can tell me what's on your mind.
+Emotion: joy
+Intent: Emotion.Sad.Followup.
+
+[2025-12-25 00:07:36]
+User: I don't live this
+Bot: I’m really sorry you’re feeling this way. You’re not alone, and your feelings matter. Would it help to talk to someone you trust, like a family member or caregiver?
+Emotion: joy
+Intent: emotion-sad-followup-next
+
+[2025-12-25 00:12:53]
+User: I am alone
+Bot: I’m really sorry you’re feeling lonely. I’m here to keep you company. Would you like to talk about your day or maybe share a memory?
+Emotion: sadness
+Intent: Emotion.Lonely
+
+[2025-12-25 00:22:00]
+User: yes please
+Bot: I’m listening. You can tell me anything—something that happened today or even a memory from long ago.
+Emotion: joy
+Intent: Emotion.lonely.followup
+

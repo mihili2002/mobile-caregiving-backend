@@ -1,0 +1,42 @@
+[2026-01-01 21:22:30]
+User: i want to share something
+Bot: You’re not alone. How has your day been emotionally?
+Emotion: love
+Intent: Daily.CheckIn
+
+[2026-01-01 21:23:16]
+User: hi
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-01 21:23:32]
+User: i want to share something
+Bot: You’re not alone. How has your day been emotionally?
+Emotion: love
+Intent: Daily.CheckIn
+
+[2026-01-01 21:23:49]
+User: help me feel better
+Bot: You’re not alone. How has your day been emotionally?
+Emotion: joy
+Intent: Daily.CheckIn
+
+[2026-01-01 21:25:14]
+User: I need a help
+Bot: I’d be happy to help. Please tell me what’s bothering you.
+Emotion: joy
+Intent: none
+
+[2026-01-01 21:29:26]
+User: I want to talk to someone
+Bot: I'm always here to lend an ear.
+Emotion: anger
+Intent: none
+
+[2026-01-01 21:40:19]
+User: i want to talk to my children
+Bot: Of course, I’m right here. Tell me how you’re feeling at this moment.
+Emotion: joy
+Intent: Daily.CheckIn
+

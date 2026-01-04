@@ -1,0 +1,24 @@
+[2026-01-01 14:17:43]
+User: hii
+Bot: Sorry, what was that?
+Emotion: joy
+Intent: Default Fallback Intent
+
+[2026-01-01 14:18:02]
+User: hi
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-01 14:18:33]
+User: hi there
+Bot: Greetings! How can I assist
+Emotion: joy
+Intent: Default Welcome Intent
+
+[2026-01-01 14:20:55]
+User: i need a help
+Bot: Sure, I can help you 😊  How can i help you
+Emotion: joy
+Intent: User-Request
+

@@ -1,0 +1,80 @@
+[2026-01-02 18:37:30]
+User: good morning
+Bot: Would you like to tell me more?
+Emotion: joy
+Intent: none
+
+[2026-01-02 18:37:46]
+User: I feel so happy
+Bot: That’s perfectly okay 🌸 I’m here whenever you feel like talking.
+Emotion: joy
+Intent: Emotion.Happy
+
+[2026-01-02 18:38:02]
+User: I am fear
+Bot: Sorry, can you say that again?
+Emotion: fear
+Intent: Default Fallback Intent
+
+[2026-01-02 18:38:24]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-02 18:38:44]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-02 18:38:58]
+User: I feel so happy
+Bot: That’s wonderful 😊 Why are you happy today?
+Emotion: joy
+Intent: Feeling-Happy
+
+[2026-01-02 18:39:15]
+User: my daughter call me
+Bot: Did it remind you of a happy memory from the past?”
+Emotion: anger
+Intent: emotion-happy-followup-no
+
+[2026-01-02 18:39:34]
+User: yes
+Bot: That's amazing! Happiness is worth celebrating. 
+Tell me more—what made you feel happy today?
+Emotion: joy
+Intent: Emotion.Happy.Followup
+
+[2026-01-02 18:40:36]
+User: I am so sad
+Bot: I’m really sorry you feel so sad today. I’m here with you.
+What’s making you feel sad — lonely, family, health, or something else?
+Emotion: sadness
+Intent: Feeling_Sad
+
+[2026-01-02 18:41:06]
+User: I feel sick
+Bot: Sorry, could you say that again?
+Emotion: sadness
+Intent: Default Fallback Intent
+
+[2026-01-02 18:41:23]
+User: I feel lonely
+Bot: I’m really sorry you’re feeling lonely. I’m here to keep you company. Would you like to talk about your day or maybe share a memory?
+Emotion: sadness
+Intent: Emotion.Lonely
+
+[2026-01-02 18:41:53]
+User: I will talk later
+Bot: I’m glad you reached out. What’s on your mind today?
+Emotion: joy
+Intent: Daily.CheckIn
+
+[2026-01-02 18:46:57]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+

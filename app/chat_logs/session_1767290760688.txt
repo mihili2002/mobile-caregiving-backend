@@ -1,0 +1,68 @@
+[2026-01-01 23:36:13]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-01 23:49:43]
+User: i feel frustrated
+Bot: I’m sorry that you're feeling angry. It must be really tough. Do you want to talk about what's upsetting you?
+Emotion: anger
+Intent: Emotion.Angry
+
+[2026-01-02 00:10:08]
+User: i feel frustrated
+Bot: Anger can be heavy to carry. I’m here with you. What happened?
+Emotion: anger
+Intent: Emotion.Angry
+
+[2026-01-02 00:10:37]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-02 00:10:48]
+User: I feel frustrated
+Bot: Anger can be heavy to carry. I’m here with you. What happened?
+Emotion: anger
+Intent: Emotion.Angry
+
+[2026-01-02 00:11:24]
+User: I'm frustrated
+Bot: I’m here with you. You’re not alone.
+
+It’s okay to feel this way.
+
+We can go slowly. Take your time.
+Emotion: anger
+Intent: emotion-angry-followup
+
+[2026-01-02 00:11:51]
+User: I'm still upset
+Bot: Let’s pause for a moment.
+Take a slow breath in…
+and out.”
+Emotion: anger
+Intent: emotion-angry-calming
+
+[2026-01-02 00:16:52]
+User: I feel ignored
+Bot: I hear how strong this feels.
+Let’s slow down together.
+Emotion: sadness
+Intent: emotion-angry-share
+
+[2026-01-02 00:23:49]
+User: they ignored what i said
+Bot: I hear how strong this feels.
+Let’s slow down together. I’m listening to you now.  Would you like to tell me what made you feel that way?
+Emotion: sadness
+Intent: emotion-angry-share
+
+[2026-01-02 00:27:52]
+User: i feel scared
+Bot: It sounds like something is worrying you. You’re not alone—I’m here with you. Would you like to talk about what’s making you anxious?
+Emotion: fear
+Intent: Emotion.Anxious
+

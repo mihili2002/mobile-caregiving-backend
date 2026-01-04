@@ -1,0 +1,6 @@
+[2025-12-31 02:01:59]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
