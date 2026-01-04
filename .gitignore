@@ -19,9 +19,11 @@ secrets/
 ml/trained_models/
 *.joblib
 *.model
+*.pkl
 
 # Firebase keys
 **/firebase-service-account*.json
+firebase_key.json
 
 # OS files
 .DS_Store
