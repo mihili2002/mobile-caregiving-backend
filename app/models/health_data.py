@@ -1,55 +1,65 @@
-"""Pydantic model for health sensor data and records."""
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, List, Literal, Dict, Any
+from datetime import datetime
+from uuid import uuid4
 
-class HealthData(BaseModel):
-    # Metadata
-    id: Optional[str] = None
-    patient_id: str = Field(..., description="UID of the patient")
-    timestamp: Optional[str] = None
-    notes: Optional[str] = None
-    
+SubmissionStatus = Literal["pending", "approved", "rejected"]
 
-    # Demographics
-    age: Optional[int] = Field(None, ge=0)
-    gender: Optional[str] = None
+class ElderHealthSubmissionIn(BaseModel):
+    # ----- Basic Information -----
+    age: int = Field(..., ge=0)
+    gender: Literal["Male", "Female"]
 
-    # Body metrics
-    height_cm: Optional[float] = None
-    weight_kg: Optional[float] = None
+    height_cm: float = Field(..., gt=0)
+    weight_kg: float = Field(..., gt=0)
     bmi: Optional[float] = None
 
-    # Medical info
-    chronic_disease: Optional[str] = None
-    genetic_risk_factor: Optional[bool] = None
-    allergies: Optional[str] = None
+    # ----- Health Conditions -----
+    chronic_conditions: List[
+        Literal["Diabetes", "Hypertension", "Heart Disease"]
+    ] = Field(default_factory=list)
 
-    # Vitals
-    blood_pressure_systolic: Optional[int] = None
-    blood_pressure_diastolic: Optional[int] = None
-    cholesterol_level: Optional[int] = None
-    blood_sugar_level: Optional[int] = None
+    genetic_risk: bool = False
 
-    # Lifestyle
+    blood_pressure: Dict[str, Optional[int]] = Field(
+        default_factory=lambda: {"systolic": None, "diastolic": None}
+    )
+
+    blood_sugar_mg_dl: Optional[float] = None
+    cholesterol_mg_dl: Optional[float] = None
+
+    # ----- Lifestyle -----
     daily_steps: Optional[int] = None
-    exercise_frequency: Optional[int] = Field(
-        None, description="Exercise sessions per week"
-    )
+    exercise_frequency: Optional[int] = None
     sleep_hours: Optional[float] = None
-    alcohol_consumption: Optional[bool] = None
-    smoking_habit: Optional[bool] = None
+    smoking: bool = False
+    alcohol: bool = False
 
-    # Nutrition
-    dietary_habits: Optional[str] = None
-    caloric_intake: Optional[int] = None
-    protein_intake: Optional[int] = None
-    carbohydrate_intake: Optional[int] = None
-    fat_intake: Optional[int] = None
-    preferred_cuisine: Optional[str] = None
+    # ----- Dietary Preferences -----
+    dietary_habit: Literal["Vegetarian", "Vegan", "Non-Vegetarian"]
+    food_allergies: Optional[str] = None
+    preferred_cuisine: Optional[
+        Literal["Indian", "Chinese", "Mediterranean", "Continental", "Mixed"]
+    ] = None
     food_aversions: Optional[str] = None
+    caloric_intake: Optional[float] = None
+    protein_intake: Optional[float] = None
+    carbohydrate_intake: Optional[float] = None
+    fat_intake: Optional[float] = None
 
-    # Raw sensor / extensibility
-    vitals: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Optional raw or device-reported vitals (extensible)",
-    )
+    # Extensibility
+    extra: Optional[Dict[str, Any]] = None
+
+
+
+class ElderHealthSubmission(ElderHealthSubmissionIn):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    elder_id: str = Field(..., description="UID of the elder patient")
+
+    submitted_at: datetime = Field(default_factory=datetime.utcnow)
+    status: SubmissionStatus = Field(default="pending")
+
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    doctor_notes: Optional[str] = None
+
