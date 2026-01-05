@@ -1,8 +1,27 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
 import threading
 
+from app.core.firebase import init_firebase
+from app.api.routes import auth, patients, caregivers, risk
+from app.services import ml_inference
+
+app = FastAPI(title="Mobile Caregiving Backend")
+
+# =========================================================
+#  CORS CONFIG (REQUIRED FOR FLUTTER WEB)
+# - Flutter Web runs on a random localhost port (e.g. 53544, 62226, etc.)
+# - Browsers send OPTIONS preflight -> must return 200
+# =========================================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_credentials=True,
+    allow_methods=["*"], 
+ ) # includes OPTIONS, POST, etc.
 from dotenv import load_dotenv
 
 # =========================================================
@@ -54,6 +73,25 @@ app.add_middleware(
 )
 
 # =========================================================
+# STARTUP
+# =========================================================
+@app.on_event("startup")
+def startup():
+    """Initialize third-party services and load ML models at app startup."""
+    # Firebase should NOT crash the app in development
+    try:
+        init_firebase()
+        print("✅ Firebase initialized")
+    except Exception as e:
+        print("⚠️ Firebase not initialized (continuing without it). Reason:", str(e))
+
+    # Load ML models into memory
+    project_root = Path(__file__).resolve().parents[1]
+    try:
+        ml_inference.init_models(project_root)
+        print("✅ ML models loaded successfully")
+    except Exception as e:
+        print("⚠️ ML models not loaded at startup. Reason:", str(e))
 # ✅ FIREBASE SETUP
 # =========================================================
 db = None
@@ -111,6 +149,8 @@ def startup():
     except Exception as e:
         print(f"Warning: load_models() failed: {e}")
 
+# =========================================================
+# BASIC ROUTES
     # --- Chatbot service
     app.state.chatbot_service = ChatbotService()
 
@@ -136,6 +176,13 @@ async def health_check():
 
 
 # =========================================================
+# API ROUTERS
+# =========================================================
+app.include_router(auth.router, prefix="/api")
+app.include_router(patients.router, prefix="/api")
+app.include_router(caregivers.router, prefix="/api")
+
+app.include_router(risk.router, prefix="/api")
 # ✅ CONVERTED FLASK ROUTE -> FASTAPI
 # =========================================================
 @app.get("/get_daily_suggestions/{uid}")
