@@ -22,7 +22,7 @@ import joblib
 # Logical name -> relative path from project root
 MODEL_REGISTRY: Dict[str, str] = {
     # Member 1 – Personalized Meal Plan / Nutrition Targets
-    "nutrition": "ml/member1_meal_plan/trained/nutrition_model.joblib",
+    # "nutrition": "ml/member1_meal_plan/trained/nutrition_model.joblib",
 
     # Example for future expansion (Member 2, 3, 4)
     # "fall_detection": "ml/member2_fall_detection/trained/fall_model.joblib",
@@ -82,7 +82,7 @@ def predict_nutrition(features: dict) -> dict:
     Wrapper for Member1 nutrition + meal plan prediction
     """
     return _predict(features)
-
+# 
 
 import os
 import joblib
