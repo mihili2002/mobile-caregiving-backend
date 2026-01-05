@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import threading
 
 from app.core.firebase import init_firebase
-from app.api.routes import auth, patients, caregivers, health_records, risk
+from app.api.routes import auth, patients, caregivers, risk
 from app.services import ml_inference
 
 app = FastAPI(title="Mobile Caregiving Backend")
@@ -20,7 +20,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],   # includes OPTIONS, POST, etc.
+    allow_methods=["*"], 
+ ) # includes OPTIONS, POST, etc.
 from dotenv import load_dotenv
 
 # =========================================================
@@ -180,7 +181,7 @@ async def health_check():
 app.include_router(auth.router, prefix="/api")
 app.include_router(patients.router, prefix="/api")
 app.include_router(caregivers.router, prefix="/api")
-app.include_router(health_records.router, prefix="/api")
+
 app.include_router(risk.router, prefix="/api")
 # ✅ CONVERTED FLASK ROUTE -> FASTAPI
 # =========================================================
