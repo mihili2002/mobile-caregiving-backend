@@ -12,7 +12,7 @@ IMPORTANT:
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Union
 import joblib
 
 
@@ -40,7 +40,7 @@ MODEL_CACHE: Dict[str, Any] = {}
 # ------------------------------------------------------------------
 # Startup loader (called once in main.py)
 # ------------------------------------------------------------------
-def init_models(base_path: str | Path = Path(".")) -> None:
+def init_models(base_path: Union[str, Path] = Path(".")) -> None:
     """
     Load all registered models into memory.
 

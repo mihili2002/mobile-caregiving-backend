@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Dict
 import joblib
 import pandas as pd
+from app.services.ml_feature_mapper import map_patient_to_ml_features
+
 
 # -------------------------------
 # Paths
@@ -50,18 +52,19 @@ def predict_nutrition(features: Dict) -> Dict:
     """
     Perform nutrition prediction for one elder.
 
-    features: dict of user input fields
+    features: API / Firestore patient dict
     returns: nutrition targets
     """
 
-    df = pd.DataFrame([features])
+    # 🔹 Convert API schema → training schema
+    df = map_patient_to_ml_features(features)
 
-    # encode categoricals
+    # 🔹 Encode categoricals (as you already do)
     for col, encoder in label_encoders.items():
         if col in df.columns:
             df[col] = df[col].apply(lambda v: safe_encode(encoder, v))
 
-    # enforce correct feature order
+    # 🔹 Enforce correct feature order (now SAFE)
     df = df[feature_columns]
 
     results = {
@@ -77,3 +80,4 @@ def predict_nutrition(features: Dict) -> Dict:
     ].inverse_transform([encoded_plan])[0]
 
     return results
+
