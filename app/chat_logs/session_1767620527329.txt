@@ -1,0 +1,12 @@
+[2026-01-05 19:12:22]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-05 19:12:38]
+User: I feel so happy
+Bot: That’s wonderful 😊 Why are you happy today?
+Emotion: joy
+Intent: Feeling-Happy
+

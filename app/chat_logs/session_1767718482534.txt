@@ -1,0 +1,27 @@
+[2026-01-06 22:27:44]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-06 22:28:01]
+User: so
+Bot: I’m really sorry you feel so sad today. I’m here with you.
+What’s making you feel sad — lonely, family, health, or something else?
+Emotion: joy
+Intent: Feeling_Sad
+
+[2026-01-06 22:28:26]
+User: I think so
+Bot: I’m really sorry you feel so sad today. I’m here with you.
+What’s making you feel sad — lonely, family, health, or something else?
+Emotion: joy
+Intent: Feeling_Sad
+
+[2026-01-06 22:28:58]
+User: i feel Soo happy
+Bot: That makes me happy to hear 😊  
+Why are you feeling so happy today?
+Emotion: joy
+Intent: Feeling-Happy
+

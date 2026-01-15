@@ -5,3 +5,22 @@ Bot: Good morning 😊 How are you feeling today
 Emotion: joy
 Intent: elder-greeting
 
+[2026-01-04 13:44:11]
+User: good morning
+Bot: Good morning 😊 How are you feeling today
+Emotion: joy
+Intent: elder-greeting
+
+[2026-01-04 13:44:37]
+User: I feel so happy
+Bot: That makes me happy to hear 😊  
+Why are you feeling so happy today?
+Emotion: joy
+Intent: Feeling-Happy
+
+[2026-01-04 13:45:04]
+User: summarize my mood yesterday
+Bot: I couldn’t find any emotion records for that time. Would you like to tell me how you feel now?
+Emotion: joy
+Intent: mood_summary_yesterday
+

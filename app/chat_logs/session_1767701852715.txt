@@ -1,0 +1,6 @@
+[2026-01-06 17:47:57]
+User: summarize my mood yesterday
+Bot: I couldn’t find any emotion records for that time. Would you like to tell me how you feel now?
+Emotion: joy
+Intent: mood_summary_yesterday
+
