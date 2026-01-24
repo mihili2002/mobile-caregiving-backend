@@ -12,5 +12,5 @@ if not firebase_admin._apps:
 uid = "TObG6senS8dDgnladZ8v0vjqWv33"
 auth.set_custom_user_claims(uid, {"role": "elder"})
 
-print(f"✅ Role claim set successfully for UID: {uid}")
-print("✅ Now log out and log in again OR refresh token using getIdToken(true)")
+print(f"Role claim set successfully for UID: {uid}")
+print("Now log out and log in again OR refresh token using getIdToken(true)")

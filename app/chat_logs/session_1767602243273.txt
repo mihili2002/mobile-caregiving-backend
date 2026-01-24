@@ -1,0 +1,24 @@
+[2026-01-05 14:07:38]
+User: good morning
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-01-05 14:07:55]
+User: I feel so happy
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-01-05 14:08:06]
+User: nothing to tell
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-01-05 14:08:28]
+User: Summarize my mood yesterday
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
