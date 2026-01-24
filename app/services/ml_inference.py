@@ -1,84 +1,58 @@
 """
-ML inference loader and wrapper.
+Central ML inference service.
 
-This module:
-- Loads trained ML models at application startup
+- Loads ALL Member1 models at startup
 - Caches them in memory
-- Exposes clean prediction helpers for FastAPI services
-
-IMPORTANT:
-- Models MUST be trained offline
-- This module ONLY loads and runs inference
+- Exposes safe prediction helpers
 """
 
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Dict, Union
 import joblib
 
-
-# ------------------------------------------------------------------
-# Model Registry
-# ------------------------------------------------------------------
-# Logical name -> relative path from project root
-MODEL_REGISTRY: Dict[str, str] = {
-    # Member 1 – Personalized Meal Plan / Nutrition Targets
-    "nutrition": "ml/member1_meal_plan/trained/nutrition_model.joblib",
-
-    # Example for future expansion (Member 2, 3, 4)
-    # "fall_detection": "ml/member2_fall_detection/trained/fall_model.joblib",
-    # "anomaly": "ml/member3_anomaly_detection/trained/anomaly_model.joblib",
-    # "risk": "ml/member4_risk_prediction/trained/risk_model.joblib",
-}
+# -------------------------------------------------
+# In-memory cache
+# -------------------------------------------------
+MODEL_CACHE: Dict[str, Dict] = {}
 
 
-# ------------------------------------------------------------------
-# In-memory model cache
-# ------------------------------------------------------------------
-MODEL_CACHE: Dict[str, Any] = {}
-
-
-# ------------------------------------------------------------------
-# Startup loader (called once in main.py)
-# ------------------------------------------------------------------
-def init_models(base_path: Union[str, Path] = Path(".")) -> None:
+# -------------------------------------------------
+# Startup loader
+# -------------------------------------------------
+def init_models(project_root: Union[str, Path]) -> None:
     """
-    Load all registered models into memory.
-
-    Args:
-        base_path: project root (defaults to current working directory)
+    Load Member1 meal-plan models ONCE at app startup
     """
-    bp = Path(base_path)
+    root = Path(project_root)
+    model_dir = root / "ml" / "member1_meal_plan" / "trained"
 
-    for model_name, rel_path in MODEL_REGISTRY.items():
-        model_path = (bp / rel_path).resolve()
+    MODEL_CACHE["member1"] = {
+        "calorie": joblib.load(model_dir / "calorie_model.pkl"),
+        "protein": joblib.load(model_dir / "protein_model.pkl"),
+        "carb": joblib.load(model_dir / "carb_model.pkl"),
+        "fat": joblib.load(model_dir / "fat_model.pkl"),
+        "mealplan": joblib.load(model_dir / "mealplan_model.pkl"),
+        "label_encoders": joblib.load(model_dir / "label_encoders.pkl"),
+        "feature_columns": joblib.load(model_dir / "feature_columns.pkl"),
+    }
 
-        if not model_path.exists():
-            print(f"[WARN] Model not found: {model_path}")
-            continue
-
-        MODEL_CACHE[model_name] = joblib.load(model_path)
-        print(f"[INFO] Loaded model: {model_name}")
+    print("[INFO] Member1 ML models loaded successfully")
 
 
-# ------------------------------------------------------------------
+# -------------------------------------------------
 # Internal helper
-# ------------------------------------------------------------------
-def get_model(name: str):
-    model = MODEL_CACHE.get(name)
-    if model is None:
-        raise RuntimeError(f"Model '{name}' not loaded")
-    return model
+# -------------------------------------------------
+def _get_member1_models():
+    if "member1" not in MODEL_CACHE:
+        raise RuntimeError("Member1 models not loaded")
+    return MODEL_CACHE["member1"]
 
 
-# ------------------------------------------------------------------
-# Member 1 – Meal Plan / Nutrition Prediction
-# ------------------------------------------------------------------
-# app/services/ml_inference.py
-
-from ml.member1_meal_plan.inference import predict_nutrition as _predict
-
+# -------------------------------------------------
+# Public API
+# -------------------------------------------------
 def predict_nutrition(features: dict) -> dict:
-    """
-    Wrapper for Member1 nutrition + meal plan prediction
-    """
-    return _predict(features)
+    from ml.member1_meal_plan.inference import predict_nutrition_core
+
+    models = _get_member1_models()
+    return predict_nutrition_core(features, models)

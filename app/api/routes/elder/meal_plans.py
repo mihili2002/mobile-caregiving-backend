@@ -41,7 +41,7 @@ async def elder_meal_plan_dashboard(user=Depends(require_role(["elder"]))):
     completed = [{"id": d.id, **d.to_dict()} for d in completed_docs]
 
     # -------------------------
-    # ✅ NEW: All submissions
+    # NEW: All submissions
     # -------------------------
     submission_docs = (
         firebase.db.collection("elder_health_submissions")

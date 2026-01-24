@@ -1,37 +1,11 @@
 """
-Inference helper for Member1 meal planning models.
-
-This module loads trained ML artifacts and performs
-nutrition target predictions.
-
-Models expected under:
-ml/member1_meal_plan/trained/
+Inference logic ONLY.
+NO joblib loading here.
 """
 
-from pathlib import Path
 from typing import Dict
-import joblib
 import pandas as pd
 from app.services.ml_feature_mapper import map_patient_to_ml_features
-
-
-# -------------------------------
-# Paths
-# -------------------------------
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_DIR = BASE_DIR / "trained"
-
-# -------------------------------
-# Load artifacts (loaded once)
-# -------------------------------
-calorie_model = joblib.load(MODEL_DIR / "calorie_model.pkl")
-protein_model = joblib.load(MODEL_DIR / "protein_model.pkl")
-carb_model = joblib.load(MODEL_DIR / "carb_model.pkl")
-fat_model = joblib.load(MODEL_DIR / "fat_model.pkl")
-mealplan_model = joblib.load(MODEL_DIR / "mealplan_model.pkl")
-
-label_encoders = joblib.load(MODEL_DIR / "label_encoders.pkl")
-feature_columns = joblib.load(MODEL_DIR / "feature_columns.pkl")
 
 
 # -------------------------------
@@ -46,38 +20,36 @@ def safe_encode(encoder, value):
 
 
 # -------------------------------
-# Public inference API
+# Core inference (stateless)
 # -------------------------------
-def predict_nutrition(features: Dict) -> Dict:
+def predict_nutrition_core(features: Dict, models: Dict) -> Dict:
     """
-    Perform nutrition prediction for one elder.
-
-    features: API / Firestore patient dict
-    returns: nutrition targets
+    Perform nutrition prediction using injected models
     """
 
-    # 🔹 Convert API schema → training schema
     df = map_patient_to_ml_features(features)
 
-    # 🔹 Encode categoricals (as you already do)
+    label_encoders = models["label_encoders"]
+    feature_columns = models["feature_columns"]
+
+    # Encode categoricals
     for col, encoder in label_encoders.items():
         if col in df.columns:
             df[col] = df[col].apply(lambda v: safe_encode(encoder, v))
 
-    # 🔹 Enforce correct feature order (now SAFE)
+    # Enforce training feature order
     df = df[feature_columns]
 
     results = {
-        "Recommended_Calories": float(calorie_model.predict(df)[0]),
-        "Recommended_Protein": float(protein_model.predict(df)[0]),
-        "Recommended_Carbs": float(carb_model.predict(df)[0]),
-        "Recommended_Fats": float(fat_model.predict(df)[0]),
+        "Recommended_Calories": float(models["calorie"].predict(df)[0]),
+        "Recommended_Protein": float(models["protein"].predict(df)[0]),
+        "Recommended_Carbs": float(models["carb"].predict(df)[0]),
+        "Recommended_Fats": float(models["fat"].predict(df)[0]),
     }
 
-    encoded_plan = mealplan_model.predict(df)[0]
+    encoded_plan = models["mealplan"].predict(df)[0]
     results["Recommended_Meal_Plan"] = label_encoders[
         "Recommended_Meal_Plan"
     ].inverse_transform([encoded_plan])[0]
 
     return results
-

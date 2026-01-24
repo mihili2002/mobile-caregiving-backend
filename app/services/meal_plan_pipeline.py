@@ -16,7 +16,7 @@ def enforce_macro_safety(nutrients: dict) -> tuple[dict, list]:
     fats = float(nutrients.get("Recommended_Fats") or 0)
     meal_plan = (nutrients.get("Recommended_Meal_Plan") or "").lower()
 
-    # ✅ If model says "low-fat", enforce <= 30% calories from fat
+    # If model says "low-fat", enforce <= 30% calories from fat
     if calories > 0 and "low-fat" in meal_plan:
         max_fat = round((calories * 0.30) / 9, 2)  # 30% calories from fat
         if fats > max_fat:
@@ -41,7 +41,7 @@ def build_meal_plan(patient: dict) -> dict:
     # -------------------------------
     nutrients = ml_inference.predict_nutrition(patient)
 
-    # ✅ Safety enforcement
+    # Safety enforcement
     nutrients, warnings = enforce_macro_safety(nutrients)
 
     # -------------------------------
@@ -49,6 +49,9 @@ def build_meal_plan(patient: dict) -> dict:
     # -------------------------------
     try:
         foods = get_food_recommendations(patient, nutrients, max_items=30)
+
+        for i, food in enumerate(foods, start=1):
+            print(f"{i}. {food}")
     except Exception as e:
         foods = []
         warnings.append(f"Food filtering failed: {str(e)}")

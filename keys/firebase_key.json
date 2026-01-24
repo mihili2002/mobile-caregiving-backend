@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "eldercare-app-442bf",
+  "private_key_id": "67709959a389509a7403514ff304b2e3906769f1",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDAAUSiOYxI5Cn1\npaCtZmzGyULZrZUG0pAUBjfPcFtRVPjZGfB823sQTHgC/QSx4WpObYgaYNJsUBDQ\n7vPdCVjEuyKlbBEk5fhdJPB7bWdMC37bK6lHTnh7zQvWLt0mLqh7HWv0x2B/XaLo\nbNwN0DU0KdTzwvRvnZiZO6HjXX+9GRxCZn4LzCMg7AoLEbOxuwOWm984/RPY6pbF\nD5Y8Q3dfuLdOasEUuFK2PmNMELbf3jV+hWDtjS/fPBkeimb9QpCG05cJ+GE322zL\nzK5DyrZHigJHaAfEvrwjAW8qoQxhFPEdonXqml1d18lhL5lBdj8kHXOtu2/rp8NL\nqDJj34pZAgMBAAECggEABA1yzKbAzIAOV6o3hjlpddelItGMWfDDTDzmXCk/sCuG\nNhTbU9NRGWK3zL5Y5UU/+GhM7VuaTWFyPWqxuHpcRoi5njq18OyurY6cScqhGcSL\nWKZnBAOGvPwysgJathXZhgG0t92mboHEMLotedgpa1CvtzZn8NwnbqKI0/LzAYN3\nALfJfKb8IlNn/FgxNSM8FQ5cHjp90H/mTgWfevpn7FZ69fHdQ+Rw18/Hm0q5sqf5\nCak7J29lAmdALzFrVCguvSxz1y61s772ypPbbk4WRWHf6xDWvMmIdLqhqSCyZxoA\nSVTOngMciVRtKL4L4nbCSUsrIGfSxmVIIXsx6KC2tQKBgQD24XRfO1UukJfD/mLT\nKqQTvgKTJIF+ShLzD8hrgsoEvvm1rShi0b02VDhVqhbRPR/eEJPhhP+INSFRZoZN\nVxkMRTgRWjvF/N7oaQM3U3KSi55T5jwQuEIKIMx8PzcxLKXlFNavBuKnOC+ABKkg\nrJG6aWoMHE0WWgU/bWaszZfChQKBgQDHGOY85k7tSdsWNV2q15s45T2bvKVnA6EI\nik78WGztbIcPPxx7dJaS1AFBq7k3abW+/5dPQlO85H4lsv/6c0/MpVNXfHZwfLPG\n9SalgCQ2hkTsKH4IytRIGWrHYTzg1yzzc20TfwrwOV/VSlmpBarGspDnTMdhz3Ar\nubyRgruSxQKBgFgvvJPv68OQXsXh7ocjqixrKRxKY/8qko5ESwEsXOFJHoWo7s4t\nwXrQprbi5Pek7+cw4MIj8etDnz0mdD7YJ9hcOWTpaISWiUFXkZCHvFtgiBPMIBSQ\n3PYlNSYEpsBoBHJJ+U3YFcpJpZ4DDC7htcRytzDQQzECwvEfMRf08IrJAoGAOqjW\nZQkCJh2FhESS5VwC6r936GOrY++IyYhefzDaXxWDsXVJwgH2vynheOTMfEwT9UM+\n5GZJX7T+icL0cmj5EPWA2ZzdFIVZPnxKN6bKhJoIwn+nqpV/+AItGLNIiYI8Rzox\n3/WlVmPBHYl7YzY9O6+uy8cuU14X0Xo22bRn6XUCgYBwsBv0a5xC4JvtrzdtnStF\ngzwrAqRlv8Pw5u9dKpYS/HnjQvwQLVhEWLm00xvIIwu16JIyI+avmr9pJD5N8MXa\nC/PU0PQJnv4e5074dUkVEKGPpIuPozvxqB2jZIshKBNDTRpl2p74IK8aaV1cT13a\nX7D6Ls/wtVwfSpryWB82lQ==\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@eldercare-app-442bf.iam.gserviceaccount.com",
+  "client_id": "100139376838789001122",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40eldercare-app-442bf.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

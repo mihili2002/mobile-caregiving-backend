@@ -50,8 +50,8 @@ def require_role(allowed: List[str]) -> Callable:
 
         role = doc.get("role")
 
-        print("✅ DEBUG uid:", uid)
-        print("✅ DEBUG role:", role)
+        print("DEBUG uid:", uid)
+        print("DEBUG role:", role)
 
         if role not in allowed:
             raise HTTPException(

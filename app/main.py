@@ -1,13 +1,23 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
+from pathlib import Path
+
 from app.core.firebase import init_firebase
 from app.api.routes import auth, patients, caregivers
 from app.api.routes.elder import health_submissions, meal_plans as elder_meal_plans
 from app.api.routes.doctor import dashboard as doctor_dashboard, meal_plans as doctor_meal_plans
 from app.services import ml_inference
-from pathlib import Path
 
 app = FastAPI(title="Mobile Caregiving Backend")
 
+# ADD THIS (CORS middleware) — fixes OPTIONS 405
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # DEV ONLY. In production, set your frontend domain(s)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 def startup():
@@ -43,4 +53,3 @@ app.include_router(elder_meal_plans.router)
 
 app.include_router(doctor_dashboard.router)
 app.include_router(doctor_meal_plans.router)
-
