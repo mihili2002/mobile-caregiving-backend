@@ -68,7 +68,6 @@ async def generate_meal_plan(
 
     # 4. update submission -> approved/reviewed state optional
     firebase.db.collection("elder_health_submissions").document(health_submission_id).update({
-        "status": "approved",
         "reviewed_by": user["uid"],
         "reviewed_at": datetime.now(timezone.utc),
     })
@@ -83,11 +82,28 @@ async def approve_meal_plan(meal_plan_id: str, user=Depends(require_role(["docto
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Meal plan not found")
 
+    # 1) Update meal plan status
     ref.update({
         "status": "approved",
         "approved_by": user["uid"],
         "approved_at": datetime.now(timezone.utc),
     })
+
+    # 2) Also update the related elder_health_submissions document (if linked)
+    mp = doc.to_dict()
+    health_submission_id = mp.get("health_submission_id")
+    if health_submission_id:
+        try:
+            submission_ref = firebase.db.collection("elder_health_submissions").document(health_submission_id)
+            submission_doc = submission_ref.get()
+            if submission_doc.exists:
+                submission_ref.update({
+                    "status": "approved",
+                })
+        except Exception:
+            # Don't fail the approval if submission update fails — log later if needed
+            pass
+
     return {"message": "Meal plan approved"}
 
 
@@ -108,6 +124,22 @@ async def reject_meal_plan(
         "rejected_at": datetime.now(timezone.utc),
         "doctor_feedback": doctor_feedback,
     })
+
+    # 2) Also update the related elder_health_submissions document (if linked)
+    mp = doc.to_dict()
+    health_submission_id = mp.get("health_submission_id")
+    if health_submission_id:
+        try:
+            submission_ref = firebase.db.collection("elder_health_submissions").document(health_submission_id)
+            submission_doc = submission_ref.get()
+            if submission_doc.exists:
+                submission_ref.update({
+                    "status": "rejected",
+                })
+        except Exception:
+            # Don't fail the rejection if submission update fails — log later if needed
+            pass
+
     return {"message": "Meal plan rejected"}
 
 

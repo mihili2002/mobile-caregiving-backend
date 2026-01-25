@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from pathlib import Path
+from pydantic import BaseSettings
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -20,3 +21,13 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 settings = Settings()
+"""Application configuration.
+
+Reads environment variables for service configuration.
+"""
+
+
+
+
+
+
