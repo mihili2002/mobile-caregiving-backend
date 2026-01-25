@@ -29,6 +29,8 @@ firebase_key.json
 .DS_Store
 Thumbs.db
 
+keys/firebase_key.json
+
 app/core/firebase_key.json
 
 ml/**/trained/*.pkl

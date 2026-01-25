@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 from app.api.deps import require_role
 from app.core import firebase
@@ -9,42 +9,61 @@ router = APIRouter(prefix="/doctor/dashboard", tags=["doctor_dashboard"])
 
 @router.get("/")
 async def doctor_dashboard(user=Depends(require_role(["doctor"]))):
-    # get latest submission per elder (simple version)
+    """
+    Doctor dashboard:
+    - Fetch latest health submission per elder
+    - Approval comes from THAT submission
+    - Meal plan is fetched ONLY for THAT submission
+    """
+
+    # 1️⃣ Fetch all health submissions
     submissions = firebase.db.collection("elder_health_submissions").stream()
 
-    # group by elder_id
+    # 2️⃣ Keep latest submission per elder
     latest_map: Dict[str, Dict[str, Any]] = {}
 
     for doc in submissions:
         data = doc.to_dict()
         elder_id = data.get("elder_id")
-        if not elder_id:
+        submitted_at = data.get("submitted_at")
+
+        if not elder_id or not submitted_at:
             continue
 
-        # keep the most recent submission
         prev = latest_map.get(elder_id)
-        if prev is None or data.get("submitted_at") > prev.get("submitted_at"):
-            latest_map[elder_id] = {"id": doc.id, **data}
+
+        if prev is None or submitted_at > prev.get("submitted_at"):
+            latest_map[elder_id] = {
+                "id": doc.id,
+                **data,
+            }
 
     rows: List[Dict[str, Any]] = []
 
+    # 3️⃣ Attach meal plan ONLY for the latest submission
     for elder_id, latest_submission in latest_map.items():
-        # Find latest meal plan for this elder (optional)
+        submission_id = latest_submission["id"]
+
         meal_docs = (
             firebase.db.collection("meal_plans")
-            .where("elder_id", "==", elder_id)
-            .order_by("created_at", direction="DESCENDING")
+            .where("health_submission_id", "==", submission_id)
             .limit(1)
             .stream()
         )
+
         meal_items = [{"id": d.id, **d.to_dict()} for d in meal_docs]
         latest_meal_plan = meal_items[0] if meal_items else None
 
         rows.append({
             "elder_id": elder_id,
-            "elder_name": None,  # you can later enrich from users collection
-            "latest_submission": latest_submission,
+            "elder_name": None,  # frontend-safe, unchanged
+            "latest_submission": {
+                **latest_submission,
+                "approved": latest_submission.get("approved", False),
+            },
             "latest_meal_plan": latest_meal_plan,
         })
 
-    return {"items": rows}
+    return {
+        "items": rows
+    }

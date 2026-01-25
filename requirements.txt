@@ -36,3 +36,10 @@ faiss-cpu
 fastapi
 uvicorn
 
+fastapi>=0.85
+uvicorn[standard]>=0.18
+firebase-admin>=6.0
+pydantic>=1.10
+google-cloud-firestore>=2.0
+joblib
+python-dotenv>=0.21.0

@@ -37,6 +37,57 @@ async def create_submission(
     return {"id": submission.id, "status": submission.status}
 
 
+@router.put("/{submission_id}")
+async def update_submission(
+    submission_id: str,
+    payload: ElderHealthSubmissionIn = Body(...),
+    user=Depends(require_role(["elder"])),
+):
+    ref = firebase.db.collection("elder_health_submissions").document(submission_id)
+    doc = ref.get()
+
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    existing = doc.to_dict()
+
+    # 🔒 Ownership check
+    if existing.get("elder_id") != user["uid"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # 🔒 Only allow updates if still pending
+    if existing.get("status") != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Approved or rejected submissions cannot be edited",
+        )
+
+    data = payload.dict()
+
+    # Recalculate BMI if needed
+    if not data.get("bmi"):
+        try:
+            height_m = data["height_cm"] / 100.0
+            data["bmi"] = round(
+                data["weight_kg"] / (height_m * height_m), 2
+            )
+        except Exception:
+            data["bmi"] = None
+
+    # Preserve immutable fields
+    data.update({
+        "elder_id": existing["elder_id"],
+        "status": existing["status"],
+        "submitted_at": datetime.now(timezone.utc),
+    })
+
+    ref.update(data)
+
+    return {
+        "id": submission_id,
+        "status": "updated",
+    }
+
 
 @router.get("/", response_model=Dict[str, Any])
 async def list_my_submissions(user=Depends(require_role(["elder"]))):
@@ -61,3 +112,20 @@ async def get_latest_submission(user=Depends(require_role(["elder"]))):
     )
     items = [{"id": d.id, **d.to_dict()} for d in docs]
     return {"item": items[0] if items else None}
+
+
+@router.get("/{submission_id}")
+async def get_submission_details(
+    submission_id: str,
+    user=Depends(require_role(["elder"]))
+):
+    doc = firebase.db.collection("elder_health_submissions") \
+        .document(submission_id) \
+        .get()
+
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    return {"id": doc.id, **doc.to_dict()}
+
+

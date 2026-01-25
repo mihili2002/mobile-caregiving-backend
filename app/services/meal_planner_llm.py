@@ -50,7 +50,7 @@ def generate_weekly_meal_plan(
     Brain 3: LLM meal plan generation for 7 days (weekly)
     """
 
-    # ✅ If food list is empty - return safe response
+    # If food list is empty - return safe response
     if not foods:
         return {
             "error": "No foods available after filtering",
