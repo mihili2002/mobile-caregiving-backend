@@ -4,7 +4,7 @@ import joblib
 import os
 from app.services.vision_llm import extract_with_openai_vision
 from app.services.ocr_fallback import extract_with_ocr_or_pdf
-from app.services.ml_inference import predict_labels
+from app.services.ml_inferences import predict_labels
 
 # Load MH Encoder
 try:

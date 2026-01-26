@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 
 # Configuration
-BASE_URL = "http://127.0.0.1:5000"
+BASE_URL = "http://127.0.0.1:8000"
 TEST_UID = "test_user_schedule_001" 
 
 def test_add_schedule_task():

@@ -1,7 +1,7 @@
 import requests
 import json
 
-url = "http://127.0.0.1:5000/api/ai/process_voice_command"
+url = "http://127.0.0.1:8000/api/ai/process_voice_command"
 
 print("=== TEST: Rapid Task Creation (without confirmation) ===\n")
 

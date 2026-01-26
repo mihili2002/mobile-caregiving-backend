@@ -1,6 +1,6 @@
 from typing import Any, Dict
 from pydantic import BaseModel, Field
-
+from pydantic_settings import BaseSettings
 
 class PredictRequest(BaseModel):
     resident_id: str = Field(..., examples=["resident_001"])

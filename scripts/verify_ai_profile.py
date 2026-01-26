@@ -3,7 +3,7 @@ import json
 import uuid
 
 # Configuration
-BASE_URL = "http://127.0.0.1:5000"
+BASE_URL = "http://127.0.0.1:8000"
 TEST_UID = f"test_user_{uuid.uuid4().hex[:8]}"
 
 def test_create_profile():

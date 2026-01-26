@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from firebase_admin import firestore
 import traceback
 from google.cloud.firestore import FieldFilter, And
-from app.services.ml_inference import predict_elder_risk
+from app.services.ml_inferences import predict_elder_risk
 
 def start_aggregator():
     thread = threading.Thread(target=_run_aggregator, daemon=True)

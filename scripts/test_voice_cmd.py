@@ -2,7 +2,7 @@ import requests
 import json
 
 # Test the voice command endpoint
-url = "http://127.0.0.1:5000/api/ai/process_voice_command"
+url = "http://127.0.0.1:8000/api/ai/process_voice_command"
 
 test_data = {
     "text": "remind me to drink water at 4pm",
