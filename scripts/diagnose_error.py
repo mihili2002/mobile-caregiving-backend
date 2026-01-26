@@ -3,7 +3,7 @@ import requests
 import json
 import time
 
-BASE_URL = "http://127.0.0.1:5000"
+BASE_URL = "http://127.0.0.1:8000"
 
 def test_endpoint(name, method, url, data=None):
     print(f"\n[{name}] Testing {url} ...")

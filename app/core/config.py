@@ -1,6 +1,6 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings , SettingsConfigDict
 from pathlib import Path
-from pydantic import BaseSettings
+# from pydantic import BaseSettings
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -16,9 +16,13 @@ class Settings(BaseSettings):
     DIALOGFLOW_PROJECT_ID: str = "elderly-voice-bot-xvja"
     DIALOGFLOW_LANGUAGE_CODE: str = "en"
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 settings = Settings()
 """Application configuration.

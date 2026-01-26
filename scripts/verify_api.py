@@ -3,7 +3,7 @@ import requests
 import json
 from datetime import datetime
 
-BASE_URL = "http://127.0.0.1:5000"
+BASE_URL = "http://127.0.0.1:8000"
 
 def test_fetch_schedule(uid, date, label=""):
     print(f"\n--- [{label}] Fetching schedule for UID: {uid}, Date: {date} ---")

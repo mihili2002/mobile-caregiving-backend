@@ -3,7 +3,7 @@ import requests
 import json
 import uuid
 
-BASE_URL = "http://127.0.0.1:5000"
+BASE_URL = "http://127.0.0.1:8000"
 UID = "T9bcdMiMEfRxfvihEQN3KcqskCi1"
 
 def test_dynamic_scheduling():

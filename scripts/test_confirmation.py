@@ -1,7 +1,7 @@
 import requests
 import json
 
-url = "http://127.0.0.1:5000/api/ai/process_voice_command"
+url = "http://127.0.0.1:8000/api/ai/process_voice_command"
 
 # Test 1: Create a task (should ask for confirmation)
 print("=== TEST 1: Task Creation (should ask for confirmation) ===")

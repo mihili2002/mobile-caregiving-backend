@@ -3,7 +3,7 @@ import requests
 import json
 import uuid
 
-BASE_URL = "http://127.0.0.1:5000"
+BASE_URL = "http://127.0.0.1:8000"
 TEST_ELDER_ID = "test_elder_therapy_001"
 
 def create_dummy_profile():
