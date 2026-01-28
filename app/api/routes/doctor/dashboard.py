@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List
 
 from app.api.deps import require_role
-from app.core import firebase
+from app.core.firebase import get_db
 
 router = APIRouter(prefix="/doctor/dashboard", tags=["doctor_dashboard"])
 
@@ -15,15 +15,18 @@ async def doctor_dashboard(user=Depends(require_role(["doctor"]))):
     - Approval comes from THAT submission
     - Meal plan is fetched ONLY for THAT submission
     """
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Firestore client not initialized")
 
     # 1️⃣ Fetch all health submissions
-    submissions = firebase.db.collection("elder_health_submissions").stream()
+    submissions = db.collection("elder_health_submissions").stream()
 
     # 2️⃣ Keep latest submission per elder
     latest_map: Dict[str, Dict[str, Any]] = {}
 
     for doc in submissions:
-        data = doc.to_dict()
+        data = doc.to_dict() or {}
         elder_id = data.get("elder_id")
         submitted_at = data.get("submitted_at")
 
@@ -45,13 +48,13 @@ async def doctor_dashboard(user=Depends(require_role(["doctor"]))):
         submission_id = latest_submission["id"]
 
         meal_docs = (
-            firebase.db.collection("meal_plans")
+            db.collection("meal_plans")
             .where("health_submission_id", "==", submission_id)
             .limit(1)
             .stream()
         )
 
-        meal_items = [{"id": d.id, **d.to_dict()} for d in meal_docs]
+        meal_items = [{"id": d.id, **(d.to_dict() or {})} for d in meal_docs]
         latest_meal_plan = meal_items[0] if meal_items else None
 
         rows.append({
@@ -64,6 +67,4 @@ async def doctor_dashboard(user=Depends(require_role(["doctor"]))):
             "latest_meal_plan": latest_meal_plan,
         })
 
-    return {
-        "items": rows
-    }
+    return {"items": rows}

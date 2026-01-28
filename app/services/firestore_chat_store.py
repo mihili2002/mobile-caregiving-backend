@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from firebase_admin import firestore
+from app.core.firebase import get_db
 
 
 def save_message(
@@ -13,7 +14,7 @@ def save_message(
     emotion: str | None = None,
     intent: str | None = None,
 ):
-    db = firestore.client()
+    db = get_db()
 
     session_ref = db.collection("chat_sessions").document(session_id)
     session_ref.set(
@@ -48,7 +49,8 @@ def save_message(
 
 
 def get_messages(session_id: str):
-    db = firestore.client()
+    db = get_db()
+
     session_ref = db.collection("chat_sessions").document(session_id)
 
     docs = (
@@ -66,7 +68,8 @@ def get_messages(session_id: str):
 
 
 def list_sessions(limit: int = 50):
-    db = firestore.client()
+    db = get_db()
+
     docs = (
         db.collection("chat_sessions")
         .order_by("updatedAt", direction=firestore.Query.DESCENDING)
@@ -92,11 +95,10 @@ def list_emotions_across_sessions(days: int = 7, limit: int = 500):
     Returns bot emotions across all sessions for last N days.
     Avoids composite index by querying only on createdAt and filtering in code.
     """
-    db = firestore.client()
+    db = get_db()
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=days) if days > 0 else None
 
-    # ✅ only filter by createdAt (single-field index exists automatically)
     q = db.collection_group("messages")
     if cutoff is not None:
         q = q.where("createdAt", ">=", cutoff)
@@ -107,7 +109,6 @@ def list_emotions_across_sessions(days: int = 7, limit: int = 500):
     for doc in q.stream():
         data = doc.to_dict() or {}
 
-        # ✅ filter in Python (no index required)
         if (data.get("sender") or "").lower() != "bot":
             continue
         if not data.get("emotion"):
@@ -127,14 +128,13 @@ def list_emotions_across_sessions(days: int = 7, limit: int = 500):
             "displayTime": data.get("displayTime"),
         })
 
-    # Return chronological (oldest -> newest) if you prefer:
     out.reverse()
     return out
+
 
 def _to_iso(ts):
     if ts is None:
         return None
-    # Firestore Timestamp has .datetime in firebase_admin
     try:
         dt = ts.datetime
     except Exception:

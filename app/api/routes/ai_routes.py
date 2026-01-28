@@ -281,7 +281,7 @@ async def create_profile(req: ProfileCreateRequest):
                 profile_data[k] = v
 
         # --- Run Prediction ---
-        from app.services.ml_inference import predict_elder_risk
+        from app.services.ml_inferences import predict_elder_risk
         risk_result = predict_elder_risk(profile_data)
         risk_result['prediction_updated_at'] = datetime.utcnow().isoformat()
         profile_data.update(risk_result)

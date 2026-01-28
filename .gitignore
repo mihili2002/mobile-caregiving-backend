@@ -34,3 +34,11 @@ keys/firebase_key.json
 app/core/firebase_key.json
 
 ml/**/trained/*.pkl
+
+
+# Tokenizers / configs (if generated)
+tokenizer_config.json
+special_tokens_map.json
+vocab.txt
+config.json
+model.safetensors

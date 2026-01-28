@@ -3,9 +3,8 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone, date, timedelta
 
 from app.api.deps import require_role
-from app.core import firebase
+from app.core.firebase import get_db
 from app.services.meal_plan_pipeline import build_meal_plan
-from app.models.meal_plan import MealPlan
 
 router = APIRouter(prefix="/doctor/meal-plans", tags=["doctor_meal_plans"])
 
@@ -16,15 +15,24 @@ async def generate_meal_plan(
     health_submission_id: Optional[str] = Body(None),
     user=Depends(require_role(["doctor"]))
 ):
-    # 1. Load health submission (latest pending if not provided)
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Firestore client not initialized")
+
+    # 1) Load health submission (latest pending if not provided)
     if health_submission_id:
-        submission_doc = firebase.db.collection("elder_health_submissions").document(health_submission_id).get()
+        submission_doc = (
+            db.collection("elder_health_submissions")
+            .document(health_submission_id)
+            .get()
+        )
         if not submission_doc.exists:
             raise HTTPException(status_code=404, detail="Submission not found")
         submission = submission_doc.to_dict()
+        submission["id"] = health_submission_id
     else:
         docs = (
-            firebase.db.collection("elder_health_submissions")
+            db.collection("elder_health_submissions")
             .where("elder_id", "==", elder_id)
             .where("status", "==", "pending")
             .order_by("submitted_at", direction="DESCENDING")
@@ -37,37 +45,34 @@ async def generate_meal_plan(
         submission = items[0]
         health_submission_id = submission["id"]
 
-    # 2. Build meal plan using pipeline (ML / AI)
+    # 2) Build meal plan using pipeline (ML / AI)
     try:
-        generated = build_meal_plan(submission)  # your pipeline can adapt to submission dict
+        generated = build_meal_plan(submission)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Meal plan generation failed: {e}")
 
-    # 3. Save MealPlan doc
+    # 3) Save MealPlan doc
     start_date = date.today()
     end_date = start_date + timedelta(days=6)
 
     meal_plan_doc = {
-    "elder_id": elder_id,
-    "created_at": datetime.now(timezone.utc),
-    "health_submission_id": health_submission_id,
-    "start_date": start_date.isoformat(),
-    "end_date": end_date.isoformat(),
-    "status": "pending",
-
-    "days": generated.get("weekly_meal_plan", {}).get("week", []),
-
-    "dietitian_notes": generated.get("weekly_meal_plan", {}).get("dietitian_notes"),
-    "nutrient_targets": generated.get("nutrient_targets"),
-    "warnings": generated.get("warnings"),
+        "elder_id": elder_id,
+        "created_at": datetime.now(timezone.utc),
+        "health_submission_id": health_submission_id,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "status": "pending",
+        "days": generated.get("weekly_meal_plan", {}).get("week", []),
+        "dietitian_notes": generated.get("weekly_meal_plan", {}).get("dietitian_notes"),
+        "nutrient_targets": generated.get("nutrient_targets"),
+        "warnings": generated.get("warnings"),
     }
 
-
-    new_ref = firebase.db.collection("meal_plans").document()
+    new_ref = db.collection("meal_plans").document()
     new_ref.set(meal_plan_doc)
 
-    # 4. update submission -> approved/reviewed state optional
-    firebase.db.collection("elder_health_submissions").document(health_submission_id).update({
+    # 4) Update submission reviewed info
+    db.collection("elder_health_submissions").document(health_submission_id).update({
         "reviewed_by": user["uid"],
         "reviewed_at": datetime.now(timezone.utc),
     })
@@ -77,7 +82,11 @@ async def generate_meal_plan(
 
 @router.post("/{meal_plan_id}/approve")
 async def approve_meal_plan(meal_plan_id: str, user=Depends(require_role(["doctor"]))):
-    ref = firebase.db.collection("meal_plans").document(meal_plan_id)
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Firestore client not initialized")
+
+    ref = db.collection("meal_plans").document(meal_plan_id)
     doc = ref.get()
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Meal plan not found")
@@ -89,19 +98,16 @@ async def approve_meal_plan(meal_plan_id: str, user=Depends(require_role(["docto
         "approved_at": datetime.now(timezone.utc),
     })
 
-    # 2) Also update the related elder_health_submissions document (if linked)
-    mp = doc.to_dict()
+    # 2) Also update linked health submission (if any)
+    mp = doc.to_dict() or {}
     health_submission_id = mp.get("health_submission_id")
     if health_submission_id:
         try:
-            submission_ref = firebase.db.collection("elder_health_submissions").document(health_submission_id)
+            submission_ref = db.collection("elder_health_submissions").document(health_submission_id)
             submission_doc = submission_ref.get()
             if submission_doc.exists:
-                submission_ref.update({
-                    "status": "approved",
-                })
+                submission_ref.update({"status": "approved"})
         except Exception:
-            # Don't fail the approval if submission update fails — log later if needed
             pass
 
     return {"message": "Meal plan approved"}
@@ -113,7 +119,11 @@ async def reject_meal_plan(
     doctor_feedback: Optional[str] = Body(None),
     user=Depends(require_role(["doctor"]))
 ):
-    ref = firebase.db.collection("meal_plans").document(meal_plan_id)
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Firestore client not initialized")
+
+    ref = db.collection("meal_plans").document(meal_plan_id)
     doc = ref.get()
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Meal plan not found")
@@ -125,19 +135,16 @@ async def reject_meal_plan(
         "doctor_feedback": doctor_feedback,
     })
 
-    # 2) Also update the related elder_health_submissions document (if linked)
-    mp = doc.to_dict()
+    # 2) Also update linked health submission (if any)
+    mp = doc.to_dict() or {}
     health_submission_id = mp.get("health_submission_id")
     if health_submission_id:
         try:
-            submission_ref = firebase.db.collection("elder_health_submissions").document(health_submission_id)
+            submission_ref = db.collection("elder_health_submissions").document(health_submission_id)
             submission_doc = submission_ref.get()
             if submission_doc.exists:
-                submission_ref.update({
-                    "status": "rejected",
-                })
+                submission_ref.update({"status": "rejected"})
         except Exception:
-            # Don't fail the rejection if submission update fails — log later if needed
             pass
 
     return {"message": "Meal plan rejected"}
@@ -149,13 +156,16 @@ async def edit_meal_plan(
     updates: Dict[str, Any] = Body(...),
     user=Depends(require_role(["doctor"]))
 ):
-    ref = firebase.db.collection("meal_plans").document(meal_plan_id)
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Firestore client not initialized")
+
+    ref = db.collection("meal_plans").document(meal_plan_id)
     doc = ref.get()
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Meal plan not found")
 
-    # Only allow editing if not completed
-    current = doc.to_dict()
+    current = doc.to_dict() or {}
     if current.get("status") == "completed":
         raise HTTPException(status_code=400, detail="Cannot edit completed meal plan")
 
