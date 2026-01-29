@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List
-from datetime import datetime, timezone
 
 from app.api.deps import require_role
-from app.core import firebase
+from app.core.firebase import get_db
 
 router = APIRouter(prefix="/elder/meal-plans", tags=["elder_meal_plans"])
 
@@ -12,11 +11,15 @@ router = APIRouter(prefix="/elder/meal-plans", tags=["elder_meal_plans"])
 async def elder_meal_plan_dashboard(user=Depends(require_role(["elder"]))):
     elder_id = user["uid"]
 
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Firestore client not initialized")
+
     # -------------------------
     # Current approved plan
     # -------------------------
     current_docs = (
-        firebase.db.collection("meal_plans")
+        db.collection("meal_plans")
         .where("elder_id", "==", elder_id)
         .where("status", "==", "approved")
         .order_by("start_date", direction="DESCENDING")
@@ -24,42 +27,44 @@ async def elder_meal_plan_dashboard(user=Depends(require_role(["elder"]))):
         .stream()
     )
 
-    current = [{"id": d.id, **d.to_dict()} for d in current_docs]
+    current = [{"id": d.id, **(d.to_dict() or {})} for d in current_docs]
     current_plan = current[0] if current else None
 
     # -------------------------
     # Completed plans
     # -------------------------
     completed_docs = (
-        firebase.db.collection("meal_plans")
+        db.collection("meal_plans")
         .where("elder_id", "==", elder_id)
         .where("status", "==", "completed")
         .order_by("end_date", direction="DESCENDING")
         .stream()
     )
 
-    completed = [{"id": d.id, **d.to_dict()} for d in completed_docs]
+    completed = [{"id": d.id, **(d.to_dict() or {})} for d in completed_docs]
 
     # -------------------------
-    # NEW: All submissions
+    # All submissions
     # -------------------------
     submission_docs = (
-        firebase.db.collection("elder_health_submissions")
+        db.collection("elder_health_submissions")
         .where("elder_id", "==", elder_id)
         .order_by("submitted_at", direction="DESCENDING")
         .stream()
     )
 
-    submissions = [
-        {
-            "id": d.id,
-            "submitted_at": d.to_dict().get("submitted_at"),
-            "reviewed_at": d.to_dict().get("reviewed_at"),
-            "reviewed_by": d.to_dict().get("reviewed_by"),
-            "status": d.to_dict().get("status"),
-        }
-        for d in submission_docs
-    ]
+    submissions = []
+    for d in submission_docs:
+        data = d.to_dict() or {}
+        submissions.append(
+            {
+                "id": d.id,
+                "submitted_at": data.get("submitted_at"),
+                "reviewed_at": data.get("reviewed_at"),
+                "reviewed_by": data.get("reviewed_by"),
+                "status": data.get("status"),
+            }
+        )
 
     return {
         "current_meal_plan": current_plan,
@@ -68,14 +73,17 @@ async def elder_meal_plan_dashboard(user=Depends(require_role(["elder"]))):
     }
 
 
-
 @router.get("/{meal_plan_id}")
 async def get_meal_plan(meal_plan_id: str, user=Depends(require_role(["elder"]))):
-    doc = firebase.db.collection("meal_plans").document(meal_plan_id).get()
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Firestore client not initialized")
+
+    doc = db.collection("meal_plans").document(meal_plan_id).get()
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Meal plan not found")
 
-    data = doc.to_dict()
+    data = doc.to_dict() or {}
     if data.get("elder_id") != user["uid"]:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
@@ -87,14 +95,24 @@ async def get_meal_plan_by_submission(
     submission_id: str,
     user=Depends(require_role(["elder"]))
 ):
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Firestore client not initialized")
+
     docs = (
-        firebase.db.collection("meal_plans")
+        db.collection("meal_plans")
         .where("health_submission_id", "==", submission_id)
         .limit(1)
         .stream()
     )
 
     for d in docs:
+        data = d.to_dict() or {}
+
+        # Extra security: elders can only fetch their own meal plan
+        if data.get("elder_id") != user["uid"]:
+            raise HTTPException(status_code=403, detail="Unauthorized")
+
         return {"meal_plan_id": d.id}
 
     raise HTTPException(status_code=404, detail="Meal plan not found")
