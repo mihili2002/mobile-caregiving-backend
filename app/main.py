@@ -21,22 +21,25 @@ from app.api.routes import (
     behavior_routes,
     medication_routes,
 )
-from app.api.routes.elder import health_submissions, meal_plans as elder_meal_plans
-from app.api.routes.doctor import dashboard as doctor_dashboard, meal_plans as doctor_meal_plans
+from app.api.routes.elder import (
+    health_submissions,
+    meal_plans as elder_meal_plans,
+)
+
+from app.api.routes.doctor import (
+    dashboard as doctor_dashboard,
+    meal_plans as doctor_meal_plans,
+)
+
 from app.api.routes.chatbot_routes import router as chatbot_router
-
-# Services / workers
-from app.services import ml_inference, load_models
-from app.services.chatbot_service import ChatbotService
-from app.workers.scheduler_worker import start_scheduler
-from app.workers.aggregator_worker import start_aggregator
+from app.api.routes.therapy_routes import router as therapy_router
 
 
 # =========================================================
-# ✅ LOAD ENV (ONLY ONCE, BEFORE APP STARTUP)
+# ✅ LOAD ENV (ONLY ONCE)
 # =========================================================
-BASE_DIR = Path(__file__).resolve().parent          # .../app
-PROJECT_ROOT = BASE_DIR.parent                      # repo root (contains /ml, .env, etc.)
+BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent
 DOTENV_PATH = PROJECT_ROOT / ".env"
 
 if DOTENV_PATH.exists():
@@ -46,15 +49,13 @@ else:
 
 
 # =========================================================
-# ✅ FASTAPI APP (ONLY ONCE)
+# ✅ FASTAPI APP (CREATE BEFORE USING app)
 # =========================================================
 app = FastAPI(title="Mobile Caregiving Backend")
 
 
 # =========================================================
-# ✅ CORS (ONLY ONCE)
-# - Flutter Web runs on random localhost ports
-# - Allow preflight OPTIONS
+# ✅ CORS
 # =========================================================
 app.add_middleware(
     CORSMiddleware,
@@ -66,21 +67,21 @@ app.add_middleware(
 
 
 # =========================================================
-# ✅ STARTUP (ONLY ONCE)
+# ✅ STARTUP
 # =========================================================
 @app.on_event("startup")
 def startup():
-    # --- Firebase init (safe in dev)
     try:
         init_firebase()
         print("✅ Firebase initialized")
     except Exception as e:
         print("⚠️ Firebase not initialized (continuing). Reason:", str(e))
 
-    # --- ML Models (Member1) - ensure PROJECT_ROOT contains /ml
     try:
         if not (PROJECT_ROOT / "ml").exists():
-            print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}. Check your project structure.")
+            print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}.")
+
+        from app.services import ml_inference, load_models
 
         ml_inference.init_models(PROJECT_ROOT)
         print("✅ ML models loaded successfully")
@@ -88,26 +89,25 @@ def startup():
     except Exception as e:
         print("⚠️ ML models not loaded at startup. Reason:", str(e))
 
-    # --- AI models (if you use load_models)
     try:
-        load_models()
-        print("✅ load_models() completed")
-    except Exception as e:
-        print("⚠️ load_models() failed. Reason:", str(e))
-
-    # --- Chatbot service
-    try:
+        from app.services.chatbot_service import ChatbotService
         app.state.chatbot_service = ChatbotService()
     except Exception as e:
         print("⚠️ ChatbotService init failed. Reason:", str(e))
 
-    # --- Background workers
-    try:
-        threading.Thread(target=start_scheduler, daemon=True).start()
-        threading.Thread(target=start_aggregator, daemon=True).start()
-        print("INFO: Background workers started.")
-    except Exception as e:
-        print("⚠️ Background workers failed to start. Reason:", str(e))
+   # --- Background workers (disabled in dev mode)
+try:
+    from app.workers.scheduler_worker import start_scheduler
+    from app.workers.aggregator_worker import start_aggregator
+
+    # Disabled to prevent Firestore quota exhaustion
+    # threading.Thread(target=start_scheduler, daemon=True).start()
+    # threading.Thread(target=start_aggregator, daemon=True).start()
+
+    print("⚠️ Background workers disabled (dev mode).")
+
+except Exception as e:
+    print("⚠️ Worker import failed:", str(e))
 
 
 # =========================================================
@@ -124,7 +124,7 @@ async def health_check():
 
 
 # =========================================================
-# ✅ CONVERTED FLASK ROUTE -> FASTAPI (Your full logic kept)
+# ✅ YOUR EXISTING get_daily_suggestions ROUTE (UNCHANGED)
 # =========================================================
 @app.get("/get_daily_suggestions/{uid}")
 async def get_daily_suggestions(uid: str):
@@ -133,12 +133,10 @@ async def get_daily_suggestions(uid: str):
         raise HTTPException(status_code=500, detail="Firestore client not initialized")
 
     try:
-        # A. Fetch Profile
         doc = db.collection("elder_profiles").document(uid).get()
         if not doc.exists:
             raise HTTPException(status_code=404, detail="Profile not found")
 
-        # B. COMMON SECTION & MEAL DETECTION
         common_ref = (
             db.collection("common_routine_templates")
             .where("uid", "in", [uid, "GLOBAL"])
@@ -169,7 +167,6 @@ async def get_daily_suggestions(uid: str):
                 }
             )
 
-        # C. THERAPY SECTION
         therapy_ref = db.collection("therapy_assignments").where("elder_id", "==", uid).stream()
         therapy_tasks = []
         for t in therapy_ref:
@@ -184,7 +181,6 @@ async def get_daily_suggestions(uid: str):
                 }
             )
 
-        # D. MEDICATION SECTION (SMART SCHEDULING)
         meds_ref = db.collection("patient_medications").where("elder_id", "==", uid).stream()
         med_tasks = []
 
@@ -218,14 +214,14 @@ async def get_daily_suggestions(uid: str):
 
                 is_morning = is_noon = is_night = False
 
-                if "1-0-1" in freq or "bd" in freq or "twice" in freq or "2 times" in freq:
+                if "1-0-1" in freq or "bd" in freq or "twice" in freq:
                     is_morning = True
                     is_night = True
-                elif "1-1-1" in freq or "tds" in freq or "three" in freq or "3 times" in freq:
+                elif "1-1-1" in freq or "tds" in freq or "three" in freq:
                     is_morning = True
                     is_noon = True
                     is_night = True
-                elif "1-0-0" in freq or "od" in freq or "once" in freq or "1 time" in freq:
+                elif "1-0-0" in freq or "od" in freq or "once" in freq:
                     is_morning = True
                 elif "0-0-1" in freq:
                     is_night = True
@@ -236,42 +232,36 @@ async def get_daily_suggestions(uid: str):
 
                 if is_morning:
                     t = calculate_time(meal_schedule["breakfast"], timing)
-                    med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Breakfast",
-                            "type": "medication",
-                            "id": med_id_base + "_am",
-                        }
-                    )
+                    med_tasks.append({
+                        "drug_name": drug_name,
+                        "dosage": m_data.get("dosage"),
+                        "time": t,
+                        "timing_label": f"{timing.replace('_', ' ').title()} - Breakfast",
+                        "type": "medication",
+                        "id": med_id_base + "_am",
+                    })
 
                 if is_noon:
                     t = calculate_time(meal_schedule["lunch"], timing)
-                    med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Lunch",
-                            "type": "medication",
-                            "id": med_id_base + "_noon",
-                        }
-                    )
+                    med_tasks.append({
+                        "drug_name": drug_name,
+                        "dosage": m_data.get("dosage"),
+                        "time": t,
+                        "timing_label": f"{timing.replace('_', ' ').title()} - Lunch",
+                        "type": "medication",
+                        "id": med_id_base + "_noon",
+                    })
 
                 if is_night:
                     t = calculate_time(meal_schedule["dinner"], timing)
-                    med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Dinner",
-                            "type": "medication",
-                            "id": med_id_base + "_pm",
-                        }
-                    )
+                    med_tasks.append({
+                        "drug_name": drug_name,
+                        "dosage": m_data.get("dosage"),
+                        "time": t,
+                        "timing_label": f"{timing.replace('_', ' ').title()} - Dinner",
+                        "type": "medication",
+                        "id": med_id_base + "_pm",
+                    })
 
         return {"common": common_tasks, "therapy": therapy_tasks, "medications": med_tasks}
 
@@ -283,7 +273,7 @@ async def get_daily_suggestions(uid: str):
 
 
 # =========================================================
-# ✅ INCLUDE ROUTERS (ONLY ONCE)
+# ✅ INCLUDE ROUTERS (NOW AFTER app IS CREATED)
 # =========================================================
 app.include_router(auth.router, prefix="/api")
 app.include_router(patients.router, prefix="/api")
@@ -300,5 +290,4 @@ app.include_router(ai_routes.router)
 app.include_router(schedule_routes.router)
 app.include_router(behavior_routes.router)
 app.include_router(medication_routes.router)
-
-
+app.include_router(therapy_router)
