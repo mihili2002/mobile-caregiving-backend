@@ -1,12 +1,15 @@
 # app/main.py
-import os
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
+import mimetypes
+import re
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.firebase import init_firebase, get_db
 
@@ -21,110 +24,221 @@ from app.api.routes import (
     behavior_routes,
     medication_routes,
 )
-from app.api.routes.elder import health_submissions, meal_plans as elder_meal_plans
-from app.api.routes.doctor import dashboard as doctor_dashboard, meal_plans as doctor_meal_plans
+from app.api.routes.elder import (
+    health_submissions,
+    meal_plans as elder_meal_plans,
+)
+
+from app.api.routes.doctor import (
+    dashboard as doctor_dashboard,
+    meal_plans as doctor_meal_plans,
+)
+
 from app.api.routes.chatbot_routes import router as chatbot_router
+from app.api.routes.therapy_routes import router as therapy_router
 
-# Services / workers
-from app.services import ml_inference, load_models
-from app.services.chatbot_service import ChatbotService
-from app.workers.scheduler_worker import start_scheduler
-from app.workers.aggregator_worker import start_aggregator
-
+mimetypes.add_type("audio/webm", ".webm")
+mimetypes.add_type("audio/mp4", ".m4a")
+mimetypes.add_type("audio/mpeg", ".mp3")
+mimetypes.add_type("audio/wav", ".wav")
+mimetypes.add_type("audio/ogg", ".ogg")
 
 # =========================================================
-# ✅ LOAD ENV (ONLY ONCE, BEFORE APP STARTUP)
+# PROJECT PATHS
 # =========================================================
-BASE_DIR = Path(__file__).resolve().parent          # .../app
-PROJECT_ROOT = BASE_DIR.parent                      # repo root (contains /ml, .env, etc.)
+APP_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = APP_DIR.parent.resolve()
 DOTENV_PATH = PROJECT_ROOT / ".env"
+UPLOAD_DIR = PROJECT_ROOT / "uploads"
 
 if DOTENV_PATH.exists():
     load_dotenv(dotenv_path=str(DOTENV_PATH), override=True)
 else:
-    print(f"⚠️ WARNING: .env not found at: {DOTENV_PATH}")
-
+    print(f"WARNING: .env not found at: {DOTENV_PATH}")
 
 # =========================================================
-# ✅ FASTAPI APP (ONLY ONCE)
+# FASTAPI APP
 # =========================================================
 app = FastAPI(title="Mobile Caregiving Backend")
 
+# =========================================================
+# STATIC FILES
+# =========================================================
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+print("PROJECT_ROOT =", PROJECT_ROOT)
+print("UPLOAD_DIR   =", UPLOAD_DIR)
+print("UPLOAD_DIR EXISTS? =", UPLOAD_DIR.exists())
+
+app.mount("/static", StaticFiles(directory=str(UPLOAD_DIR)), name="static")
 
 # =========================================================
-# ✅ CORS (ONLY ONCE)
-# - Flutter Web runs on random localhost ports
-# - Allow preflight OPTIONS
+# CORS (ALLOW ANY localhost PORT for dev)
 # =========================================================
+ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+_ORIGIN_RE = re.compile(ORIGIN_REGEX)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
+# =========================================================
+# Preflight handler (middleware level - OPTIONS never 400)
+# =========================================================
+@app.middleware("http")
+async def handle_preflight(request: Request, call_next):
+    if request.method == "OPTIONS":
+        origin = request.headers.get("origin")
+        headers = {}
+
+        if origin and _ORIGIN_RE.match(origin):
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+            headers["Access-Control-Allow-Headers"] = request.headers.get(
+                "access-control-request-headers", "*"
+            )
+            headers["Access-Control-Allow-Methods"] = request.headers.get(
+                "access-control-request-method", "GET,POST,PUT,DELETE,OPTIONS"
+            )
+
+        return Response(status_code=204, headers=headers)
+
+    return await call_next(request)
 
 # =========================================================
-# ✅ STARTUP (ONLY ONCE)
+# Force CORS headers on ALL errors (prevents "CORS blocked" on 500/429)
+# =========================================================
+def _cors_headers_for_request(request: Request) -> dict:
+    origin = request.headers.get("origin")
+    if origin and _ORIGIN_RE.match(origin):
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "*",
+        }
+    return {}
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=_cors_headers_for_request(request),
+        )
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "error": str(exc)},
+        headers=_cors_headers_for_request(request),
+    )
+
+# =========================================================
+# STARTUP
 # =========================================================
 @app.on_event("startup")
 def startup():
-    # --- Firebase init (safe in dev)
+    # 1) Firebase
     try:
         init_firebase()
         print("✅ Firebase initialized")
     except Exception as e:
-        print("⚠️ Firebase not initialized (continuing). Reason:", str(e))
+        print("⚠️ Firebase not initialized. Reason:", str(e))
 
-    # --- ML Models (Member1) - ensure PROJECT_ROOT contains /ml
+    # 2) EmotionPredictor
+    try:
+        from app.services.emotion_predictor import EmotionPredictor
+
+        emotion_models_dir = PROJECT_ROOT / "model"
+
+        if not (emotion_models_dir / "emotion_model.pkl").exists():
+            emotion_models_dir = Path(r"C:\Users\ASUS\Desktop\IME\mobile-caregiving-backend\model")
+
+        model_path = emotion_models_dir / "emotion_model.pkl"
+        scaler_path = emotion_models_dir / "scaler.pkl"
+        encoder_path = emotion_models_dir / "label_encoder.pkl"
+
+        if not model_path.exists():
+            raise FileNotFoundError(f"emotion_model.pkl not found at {model_path}")
+        if not scaler_path.exists():
+            raise FileNotFoundError(f"scaler.pkl not found at {scaler_path}")
+        if not encoder_path.exists():
+            raise FileNotFoundError(f"label_encoder.pkl not found at {encoder_path}")
+
+        app.state.emotion_predictor = EmotionPredictor(
+            model_path=str(model_path),
+            scaler_path=str(scaler_path),
+            encoder_path=str(encoder_path),
+        )
+        print("✅ EmotionPredictor loaded!")
+    except Exception as e:
+        app.state.emotion_predictor = None
+        print("❌ EmotionPredictor failed:", repr(e))
+
+    # 3) ML Models
     try:
         if not (PROJECT_ROOT / "ml").exists():
-            print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}. Check your project structure.")
+            print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}.")
+    try:
+        if not (PROJECT_ROOT / "ml").exists():
+            print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}.")
+
+        from app.services import ml_inference, load_models
 
         ml_inference.init_models(PROJECT_ROOT)
         print("✅ ML models loaded successfully")
-        print("Member1 ready =", ml_inference.member1_ready())
     except Exception as e:
-        print("⚠️ ML models not loaded at startup. Reason:", str(e))
+        print("⚠️ ML models not loaded. Reason:", str(e))
 
-    # --- AI models (if you use load_models)
+    # 4) AI models
     try:
         load_models()
         print("✅ load_models() completed")
     except Exception as e:
         print("⚠️ load_models() failed. Reason:", str(e))
 
-    # --- Chatbot service
+    # 5) Chatbot service
     try:
+        from app.services.chatbot_service import ChatbotService
         app.state.chatbot_service = ChatbotService()
+        print("✅ ChatbotService initialized")
     except Exception as e:
         print("⚠️ ChatbotService init failed. Reason:", str(e))
 
-    # --- Background workers
-    try:
-        threading.Thread(target=start_scheduler, daemon=True).start()
-        threading.Thread(target=start_aggregator, daemon=True).start()
-        print("INFO: Background workers started.")
-    except Exception as e:
-        print("⚠️ Background workers failed to start. Reason:", str(e))
+   # --- Background workers (disabled in dev mode)
+try:
+    from app.workers.scheduler_worker import start_scheduler
+    from app.workers.aggregator_worker import start_aggregator
+
+    # Disabled to prevent Firestore quota exhaustion
+    # threading.Thread(target=start_scheduler, daemon=True).start()
+    # threading.Thread(target=start_aggregator, daemon=True).start()
+
+    print("⚠️ Background workers disabled (dev mode).")
+
+except Exception as e:
+    print("⚠️ Worker import failed:", str(e))
 
 
 # =========================================================
-# ✅ BASIC ROUTES
+# BASIC ROUTES
 # =========================================================
 @app.get("/")
 async def root():
     return {"status": "running", "message": "Caregiving Backend is active"}
 
-
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
 
-
 # =========================================================
-# ✅ CONVERTED FLASK ROUTE -> FASTAPI (Your full logic kept)
+# DAILY SUGGESTIONS ROUTE
 # =========================================================
 @app.get("/get_daily_suggestions/{uid}")
 async def get_daily_suggestions(uid: str):
@@ -133,12 +247,10 @@ async def get_daily_suggestions(uid: str):
         raise HTTPException(status_code=500, detail="Firestore client not initialized")
 
     try:
-        # A. Fetch Profile
         doc = db.collection("elder_profiles").document(uid).get()
         if not doc.exists:
             raise HTTPException(status_code=404, detail="Profile not found")
 
-        # B. COMMON SECTION & MEAL DETECTION
         common_ref = (
             db.collection("common_routine_templates")
             .where("uid", "in", [uid, "GLOBAL"])
@@ -169,8 +281,11 @@ async def get_daily_suggestions(uid: str):
                 }
             )
 
-        # C. THERAPY SECTION
-        therapy_ref = db.collection("therapy_assignments").where("elder_id", "==", uid).stream()
+        therapy_ref = (
+            db.collection("therapy_assignments")
+            .where("elder_id", "==", uid)
+            .stream()
+        )
         therapy_tasks = []
         for t in therapy_ref:
             t_data = t.to_dict() or {}
@@ -184,8 +299,11 @@ async def get_daily_suggestions(uid: str):
                 }
             )
 
-        # D. MEDICATION SECTION (SMART SCHEDULING)
-        meds_ref = db.collection("patient_medications").where("elder_id", "==", uid).stream()
+        meds_ref = (
+            db.collection("patient_medications")
+            .where("elder_id", "==", uid)
+            .stream()
+        )
         med_tasks = []
 
         def calculate_time(base_time_str: str, timing_type: str) -> str:
@@ -218,14 +336,14 @@ async def get_daily_suggestions(uid: str):
 
                 is_morning = is_noon = is_night = False
 
-                if "1-0-1" in freq or "bd" in freq or "twice" in freq or "2 times" in freq:
+                if "1-0-1" in freq or "bd" in freq or "twice" in freq:
                     is_morning = True
                     is_night = True
-                elif "1-1-1" in freq or "tds" in freq or "three" in freq or "3 times" in freq:
+                elif "1-1-1" in freq or "tds" in freq or "three" in freq:
                     is_morning = True
                     is_noon = True
                     is_night = True
-                elif "1-0-0" in freq or "od" in freq or "once" in freq or "1 time" in freq:
+                elif "1-0-0" in freq or "od" in freq or "once" in freq:
                     is_morning = True
                 elif "0-0-1" in freq:
                     is_night = True
@@ -236,42 +354,36 @@ async def get_daily_suggestions(uid: str):
 
                 if is_morning:
                     t = calculate_time(meal_schedule["breakfast"], timing)
-                    med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Breakfast",
-                            "type": "medication",
-                            "id": med_id_base + "_am",
-                        }
-                    )
+                    med_tasks.append({
+                        "drug_name": drug_name,
+                        "dosage": m_data.get("dosage"),
+                        "time": t,
+                        "timing_label": f"{timing.replace('_', ' ').title()} - Breakfast",
+                        "type": "medication",
+                        "id": med_id_base + "_am",
+                    })
 
                 if is_noon:
                     t = calculate_time(meal_schedule["lunch"], timing)
-                    med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Lunch",
-                            "type": "medication",
-                            "id": med_id_base + "_noon",
-                        }
-                    )
+                    med_tasks.append({
+                        "drug_name": drug_name,
+                        "dosage": m_data.get("dosage"),
+                        "time": t,
+                        "timing_label": f"{timing.replace('_', ' ').title()} - Lunch",
+                        "type": "medication",
+                        "id": med_id_base + "_noon",
+                    })
 
                 if is_night:
                     t = calculate_time(meal_schedule["dinner"], timing)
-                    med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Dinner",
-                            "type": "medication",
-                            "id": med_id_base + "_pm",
-                        }
-                    )
+                    med_tasks.append({
+                        "drug_name": drug_name,
+                        "dosage": m_data.get("dosage"),
+                        "time": t,
+                        "timing_label": f"{timing.replace('_', ' ').title()} - Dinner",
+                        "type": "medication",
+                        "id": med_id_base + "_pm",
+                    })
 
         return {"common": common_tasks, "therapy": therapy_tasks, "medications": med_tasks}
 
@@ -281,9 +393,8 @@ async def get_daily_suggestions(uid: str):
         print(f"Aggregator Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # =========================================================
-# ✅ INCLUDE ROUTERS (ONLY ONCE)
+# INCLUDE ROUTERS
 # =========================================================
 app.include_router(auth.router, prefix="/api")
 app.include_router(patients.router, prefix="/api")
@@ -300,5 +411,4 @@ app.include_router(ai_routes.router)
 app.include_router(schedule_routes.router)
 app.include_router(behavior_routes.router)
 app.include_router(medication_routes.router)
-
-
+app.include_router(therapy_router)
