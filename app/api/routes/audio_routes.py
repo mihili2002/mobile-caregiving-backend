@@ -16,7 +16,9 @@ async def get_voice_reminder(uid: str, task_id: str, forgotten: bool = False):
     from datetime import datetime
     today_iso = datetime.now().strftime("%Y-%m-%d")
     
-    schedules = db.collection('schedules').where('uid', '==', uid).where('date', '==', today_iso).limit(1).stream()
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    
+    schedules = db.collection('schedules').where(filter=FieldFilter('uid', '==', uid)).where(filter=FieldFilter('date', '==', today_iso)).limit(1).stream()
     
     task_data = None
     for doc in schedules:

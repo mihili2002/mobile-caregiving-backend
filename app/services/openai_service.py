@@ -42,16 +42,28 @@ User: "good evening"
 Alex: "Good evening! I'm so glad to see you. How was your afternoon? Did you manage to take your medicine at 5 PM?"
 """
 
+RECALL_SYSTEM_PROMPT = """
+You are Alex, a caring assistant helping an elderly user recall their day.
+Your goal is to answer questions about past activities and task statuses using the provided context.
+
+GUIDELINES:
+1. Be precise but warm: If a task is marked "Completed", say so naturally. If it's "Pending" or "Missing", be gentle.
+2. Use the "CURRENT CONTEXT" provided: This contains the user's schedule and semantic memories.
+3. If the user asks a general question not found in context, answer based on your general knowledge but prioritze the user's specific history.
+4. Keep it short and clear.
+"""
+
 def _headers() -> Dict[str, str]:
     return {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
     }
 
-async def process_voice_with_llm(text: str, uid: str, session_id: str, context: Optional[str] = None) -> Dict[str, Any]:
+async def process_voice_with_llm(text: str, uid: str, session_id: str, context: Optional[str] = None, system_prompt: Optional[str] = None) -> Dict[str, Any]:
     """
     Sends user text to OpenAI with conversation history and returns a natural response.
     'context' can be used to provide current schedule info, medication status, etc.
+    'system_prompt' can override the default coach prompt (e.g., for memory recall).
     """
     if not OPENAI_API_KEY:
         log_debug("openai_error", {"error": "API Key missing"})
@@ -62,7 +74,7 @@ async def process_voice_with_llm(text: str, uid: str, session_id: str, context: 
 
     # Initialize or fetch history
     if session_id not in chat_history:
-        prompt = SYSTEM_PROMPT
+        prompt = system_prompt or SYSTEM_PROMPT
         if context:
             prompt += f"\n\nCURRENT CONTEXT:\n{context}"
         chat_history[session_id] = [{"role": "system", "content": prompt}]

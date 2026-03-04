@@ -7,7 +7,9 @@ from datetime import datetime, timedelta
 from firebase_admin import firestore
 
 from app.models.schemas import ExtractionResponse, Medication
-from app.services.openai_service import process_voice_with_llm
+from app.services.openai_service import process_voice_with_llm, RECALL_SYSTEM_PROMPT
+from app.services.memory_engine import memory_engine
+from app.services.time_utils import extract_time_range, is_last_time_query
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -224,6 +226,69 @@ async def process_voice_command(req: VoiceCommandRequest):
         
         # Simple chat reply
         return {"action": "reply", "reply": reply, "intent": llm_result["intent"]}
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/recall_memory")
+async def recall_memory(req: VoiceCommandRequest):
+    try:
+        text = req.text.lower()
+        uid = req.uid
+        session_id = req.session_id or f"{uid}_recall"
+        db = firestore.client()
+
+        # 1. Identify Time Range
+        t_range = extract_time_range(text)
+        is_last = is_last_time_query(text)
+        
+        context_parts = []
+        
+        # 2. Fetch Schedule Statuses (Today/Yesterday)
+        # If no time range, assume today or general interest in recent tasks
+        dates_to_check = []
+        if t_range:
+             start_dt, end_dt = t_range
+             # Add days in range
+             curr = start_dt.date()
+             while curr <= end_dt.date():
+                 dates_to_check.append(curr.strftime("%Y-%m-%d"))
+                 curr += timedelta(days=1)
+        else:
+             now = datetime.now()
+             dates_to_check = [now.strftime("%Y-%m-%d"), (now - timedelta(days=1)).strftime("%Y-%m-%d")]
+
+        schedule_context = "Relevant Task Statuses:\n"
+        from app.services.time_utils import get_schedule_doc_id
+        for d_str in dates_to_check:
+            doc_id = get_schedule_doc_id(uid, d_str)
+            doc = db.collection('schedules').document(doc_id).get()
+            if doc.exists:
+                tasks = doc.to_dict().get("tasks", [])
+                for t in tasks:
+                    status = "Completed" if t.get("completed") else "Pending"
+                    schedule_context += f"- {d_str}: {t.get('task_name')} at {t.get('time')} is {status}\n"
+        
+        context_parts.append(schedule_context)
+
+        # 3. Fetch Semantic Memories
+        memories = memory_engine.recall(text, uid=uid, time_range=t_range, sort_by_time=is_last, top_k=5)
+        if memories:
+            mem_context = "My Recorded Memories:\n"
+            for m in memories:
+                ts = m['timestamp'].strftime("%Y-%m-%d %H:%M") if hasattr(m['timestamp'], 'strftime') else str(m['timestamp'])
+                mem_context += f"- [{ts}] {m['text']}\n"
+            context_parts.append(mem_context)
+        
+        full_context = "\n".join(context_parts)
+
+        # 4. Use LLM with RECALL prompt
+        llm_result = await process_voice_with_llm(
+            req.text, uid, session_id, context=full_context, system_prompt=RECALL_SYSTEM_PROMPT
+        )
+        
+        return {"action": "reply", "reply": llm_result["reply"], "intent": "memory_recall"}
 
     except Exception as e:
         traceback.print_exc()

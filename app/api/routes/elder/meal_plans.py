@@ -20,8 +20,8 @@ async def elder_meal_plan_dashboard(user=Depends(require_role(["elder"]))):
     # -------------------------
     current_docs = (
         db.collection("meal_plans")
-        .where("elder_id", "==", elder_id)
-        .where("status", "==", "approved")
+        .where(filter=FieldFilter("elder_id", "==", elder_id))\
+        .where(filter=FieldFilter("status", "==", "approved"))\
         .order_by("start_date", direction="DESCENDING")
         .limit(1)
         .stream()
@@ -35,8 +35,8 @@ async def elder_meal_plan_dashboard(user=Depends(require_role(["elder"]))):
     # -------------------------
     completed_docs = (
         db.collection("meal_plans")
-        .where("elder_id", "==", elder_id)
-        .where("status", "==", "completed")
+        .where(filter=FieldFilter("elder_id", "==", elder_id))\
+        .where(filter=FieldFilter("status", "==", "completed"))\
         .order_by("end_date", direction="DESCENDING")
         .stream()
     )

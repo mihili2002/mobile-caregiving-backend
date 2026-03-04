@@ -72,7 +72,11 @@ class VoiceService:
             
             return True
         except Exception as e:
-            log_debug("tts_api_error", {"error": str(e), "text": text})
+            error_msg = str(e)
+            if "403" in error_msg:
+                log_debug("tts_forbidden", {"error": error_msg, "text": text, "model": "tts-1"})
+            else:
+                log_debug("tts_api_error", {"error": error_msg, "text": text})
             return False
 
 voice_service = VoiceService()

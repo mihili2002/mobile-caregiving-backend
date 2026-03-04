@@ -140,9 +140,10 @@ async def get_daily_suggestions(uid: str):
             raise HTTPException(status_code=404, detail="Profile not found")
 
         # B. COMMON SECTION & MEAL DETECTION
+        from google.cloud.firestore import FieldFilter
         common_ref = (
             db.collection("common_routine_templates")
-            .where("uid", "in", [uid, "GLOBAL"])
+            .where(filter=FieldFilter("uid", "in", [uid, "GLOBAL"]))
             .stream()
         )
 
@@ -177,7 +178,7 @@ async def get_daily_suggestions(uid: str):
         common_tasks.sort(key=lambda x: x["default_time"])
 
         # C. THERAPY SECTION
-        therapy_ref = db.collection("therapy_assignments").where("elder_id", "==", uid).stream()
+        therapy_ref = db.collection("therapy_assignments").where(filter=FieldFilter("elder_id", "==", uid)).stream()
         therapy_tasks = []
         for t in therapy_ref:
             t_data = t.to_dict() or {}
@@ -192,7 +193,7 @@ async def get_daily_suggestions(uid: str):
             )
 
         # D. MEDICATION SECTION (SMART SCHEDULING)
-        meds_ref = db.collection("patient_medications").where("elder_id", "==", uid).stream()
+        meds_ref = db.collection("patient_medications").where(filter=FieldFilter("elder_id", "==", uid)).stream()
         med_tasks = []
 
         def calculate_time(base_time_str: str, timing_type: str) -> str:
