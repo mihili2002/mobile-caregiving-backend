@@ -1,18 +1,15 @@
-from fastapi import APIRouter, Request, Form, File, UploadFile, HTTPException
-from pydantic import BaseModel, Field
-from typing import Optional, List, Any
-import traceback
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
 import uuid
+import traceback
 from datetime import datetime, timedelta
 from firebase_admin import firestore
 
-from app.services.extractor import extract_medications
 from app.models.schemas import ExtractionResponse, Medication
+from app.services.openai_service import process_voice_with_llm
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
-
-# Session storage for pending task confirmations
-pending_confirmations = {}  # {session_id: {"task_name": "...", "time": "...", "date_offset": 0}}
 
 class VoiceCommandRequest(BaseModel):
     text: str
@@ -21,62 +18,76 @@ class VoiceCommandRequest(BaseModel):
 
 class ProfileCreateRequest(BaseModel):
     uid: str
-    name: Optional[str] = None
-    age: Optional[int] = None
-    long_term_illness: Optional[str] = None
-    sleep_well_1to5: Optional[int] = None
-    tired_day_1to5: Optional[int] = None
-    forget_recent_1to5: Optional[int] = None
-    difficulty_remember_tasks_1to5: Optional[int] = None
-    forget_take_meds_1to5: Optional[int] = None
-    tasks_harder_1to5: Optional[int] = None
-    lonely_1to5: Optional[int] = None
-    sad_anxious_1to5: Optional[int] = None
-    social_talk_1to5: Optional[int] = None
-    enjoy_hobbies_1to5: Optional[int] = None
-    comfortable_app_1to5: Optional[int] = None
-    reminders_helpful_1to5: Optional[int] = None
-    reminders_right_time_1to5: Optional[int] = None
-    reminders_preference: Optional[str] = None
+    name: str
+    age: int
+    gender: str
+    chronic_conditions: List[str]
+    dietary_habit: str
+    food_allergies: str
+    preferred_cuisine: str
+    food_aversions: str
 
-def normalize_timing(t: str) -> str:
-    if not t:
-        return "unknown"
-    x = t.strip().lower()
-    if x in ["ac", "a.c", "before food", "before meal"]:
-        return "before_meal"
-    if x in ["pc", "p.c", "after food", "after meal"]:
-        return "after_meal"
-    if x in ["with food", "with meal"]:
-        return "with_meal"
-    if x in ["mane", "morning", "am"]:
-        return "unknown"
-    if x in ["before_meal", "after_meal", "with_meal", "unknown", "bedtime", "night"]:
-        return x
-    if len(x.split()) == 1 and x.isalpha() and len(x) > 2:
-        return x
-    return "unknown"
+# In-memory storage for pending confirmations (simplified for demo)
+# In production, use Redis or Firestore
+pending_confirmations = {}  # {session_id: {"task_name": "...", "time": "...", "date_offset": 0}}
 
-@router.post("/prescriptions/extract", response_model=ExtractionResponse)
-async def extract_prescription(elder_id: str = Form(...), file: UploadFile = File(...)):
+GREETINGS = [
+    "Hi there! I'm Alex, your routine coach. How can I help you today?",
+    "Hello! Alex here. Ready to plan your day?",
+    "Good day! I'm Alex. What's on your mind?",
+    "Hi! It's Alex. I'm here to help with your schedule or any memories.",
+    "Hey! Alex is ready! How can I support you right now?"
+]
+
+def get_target_date(day_str: str) -> str:
+    """Calculates the YYYY-MM-DD string for a given day description."""
+    day_str = day_str.lower()
+    now = datetime.now()
+    if "today" in day_str:
+        return now.strftime("%Y-%m-%d")
+    if "tomorrow" in day_str:
+        return (now + timedelta(days=1)).strftime("%Y-%m-%d")
+    
+    # Check for days of week
+    days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    for i, d in enumerate(days):
+        if d in day_str:
+            target_weekday = i
+            current_weekday = now.weekday()
+            days_ahead = target_weekday - current_weekday
+            if days_ahead < 0: # Already passed this week
+                days_ahead += 7
+            elif days_ahead == 0 and "next" in day_str:
+                days_ahead = 7
+            
+            return (now + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+    
+    return now.strftime("%Y-%m-%d")
+
+async def get_context_summary(uid: str) -> str:
+    """Fetches a summary of today's schedule to provide context for the LLM."""
     try:
-        file_bytes = await file.read()
-        filename = file.filename or "prescription"
-        content_type = file.content_type or ""
-
-        extracted, method = extract_medications(file_bytes, filename, content_type)
-        meds = extracted.get("medications", []) or []
-
-        validated = []
-        for m in meds:
-             m["timing"] = normalize_timing(str(m.get("timing", "")))
-             validated.append(Medication(**m))
+        from app.services.time_utils import get_schedule_doc_id
+        db = firestore.client()
+        today = datetime.now().strftime("%Y-%m-%d")
+        doc_id = get_schedule_doc_id(uid, today)
+        doc = db.collection('schedules').document(doc_id).get()
         
-        return ExtractionResponse(elder_id=elder_id, medications=validated, used_method=method)
-
+        if not doc.exists:
+            return "No tasks scheduled for today yet."
+        
+        data = doc.to_dict()
+        tasks = data.get("tasks", [])
+        if not tasks:
+            return "The schedule for today is empty."
+        
+        summary = "Today's Schedule:\n"
+        for t in tasks:
+            status = "Completed" if t.get("completed") else "Pending"
+            summary += f"- {t.get('task_name')} at {t.get('time')} ({status})\n"
+        return summary
     except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        return f"Error fetching context: {str(e)}"
 
 @router.post("/process_voice_command")
 async def process_voice_command(req: VoiceCommandRequest):
@@ -86,12 +97,8 @@ async def process_voice_command(req: VoiceCommandRequest):
         session_id = req.session_id or f"{uid}_default"
 
         # --- Imports (Late to avoid cycles) ---
-        from app.services.memory_engine import memory_engine
-        from app.services.time_utils import extract_time_range, is_last_time_query, get_schedule_doc_id
-        from app.services.classifier import classify_text
-        from app.services.response_builder import build_recall_response
+        from app.services.time_utils import get_schedule_doc_id
         from app.services.logger import log_debug
-        from app.services.intent_parser import parse_task_intent
         
         db = firestore.client()
         log_debug("voice_input_received", {"text": text, "uid": uid})
@@ -102,146 +109,117 @@ async def process_voice_command(req: VoiceCommandRequest):
             if any(x in text for x in ["yes", "yeah", "correct", "yep", "sure", "okay", "ok"]):
                 task_name = pending["task_name"]
                 time_str = pending["time"]
-                date_offset = pending["date_offset"]
+                target_date = pending.get("date", datetime.now().strftime("%Y-%m-%d"))
                 task_uid = pending["uid"]
-                target_date = (datetime.now() + timedelta(days=date_offset)).strftime("%Y-%m-%d")
+                frequency = pending.get("frequency", "once")
+                reminder_offset = pending.get("reminder_offset_mins", 0)
                 
                 try:
                     doc_id = get_schedule_doc_id(task_uid, target_date)
                     doc_ref = db.collection('schedules').document(doc_id)
+                    
+                    # 1. Main Task
                     task_id = str(uuid.uuid4())
                     new_task = {
-                        "id": task_id,
-                        "task_name": task_name,
-                        "time": time_str,
-                        "type": "common",
-                        "completed": False,
-                        "completedAt": None,
-                        "scheduledAt": datetime.now().isoformat(),
-                        "graceMinutes": 30
+                        "id": task_id, "task_name": task_name, "time": time_str, "type": "common",
+                        "completed": False, "completedAt": None, "scheduledAt": datetime.now().isoformat(), "graceMinutes": 30
                     }
+                    
                     doc = doc_ref.get()
                     if not doc.exists:
-                        doc_ref.set({
-                            "userId": task_uid,
-                            "date": target_date,
-                            "status": "active",
-                            "tasks": [new_task],
-                            "created_at": datetime.utcnow().isoformat()
-                        })
+                        doc_ref.set({"userId": task_uid, "date": target_date, "status": "active", "tasks": [new_task], "created_at": datetime.utcnow().isoformat()})
                     else:
                         doc_ref.update({"tasks": firestore.ArrayUnion([new_task])})
                     
+                    # 2. Daily Template
+                    if frequency == "daily":
+                        db.collection("common_routine_templates").add({
+                            "uid": task_uid, "task_name": task_name, "default_time": time_str,
+                            "type": "common", "created_at": datetime.utcnow().isoformat(), "is_template": True
+                        })
+
+                    # 3. Proactive Reminder Task
+                    if reminder_offset > 0:
+                        try:
+                            # Calculate reminder time
+                            h, m = map(int, time_str.split(':'))
+                            rem_dt = datetime.combine(datetime.now().date(), time(h, m)) - timedelta(minutes=reminder_offset)
+                            rem_time = rem_dt.strftime("%H:%M")
+                            
+                            rem_task_id = str(uuid.uuid4())
+                            rem_task = {
+                                "id": rem_task_id, "task_name": f"Reminder: {task_name}", "time": rem_time, "type": "common",
+                                "completed": False, "completedAt": None, "scheduledAt": datetime.now().isoformat(), "graceMinutes": 5
+                            }
+                            doc_ref.update({"tasks": firestore.ArrayUnion([rem_task])})
+                        except: pass # Non-critical if reminder fails
+
                     del pending_confirmations[session_id]
-                    day_phrase = "tomorrow" if date_offset == 1 else "today"
                     return {
                         "action": "reply",
-                        "reply": f"Great! I've added '{task_name}' to your schedule for {day_phrase} at {time_str}. Anything else?",
-                        "intent": "task_saved",
-                        "is_confirmation": False,
-                        "task": {"name": task_name, "time": time_str, "date_offset": date_offset, "day_phrase": day_phrase, "task_id": task_id}
+                        "reply": f"Excellent! I've added '{task_name}' to your schedule. Anything else I can help with?",
+                        "intent": "task_saved", "is_confirmation": False
                     }
                 except Exception as save_error:
-                    print(f"Error saving confirmed task: {save_error}")
+                    log_debug("save_error", {"error": str(save_error)})
                     del pending_confirmations[session_id]
-                    return {"action": "reply", "reply": "I had trouble saving that task. Please try again.", "intent": "error"}
+                    return {"action": "reply", "reply": "I'm sorry, I had a little trouble saving that. Could you try again?", "intent": "error"}
             
             elif any(x in text for x in ["no", "nope", "wrong", "incorrect", "not correct"]):
                 del pending_confirmations[session_id]
-                return {"action": "reply", "reply": "Okay, I'll discard that. What would you like to add instead?", "intent": "task_discarded", "is_confirmation": False}
+                return {"action": "reply", "reply": "No problem at all. I've cleared that. What else is on your mind?", "intent": "task_discarded", "is_confirmation": False}
 
-        # --- 1. Intent: Recall ---
-        if any(x in text for x in ["did i", "have i", "what did i", "when did i", "what have i", "last time"]):
-            category = classify_text(text)
-            is_last_time = is_last_time_query(text)
-            time_range = None if is_last_time else extract_time_range(text)
-            
-            memories = memory_engine.recall(text, uid=uid, time_range=time_range, distance_threshold=2.0, category_filter=category, sort_by_time=is_last_time)
-            
-            uncertainty = "low"
-            filtered_memories = []
-            ask_confirmation = False
-            
-            if memories:
-                top = memories[0]
-                top_score = top['score']
-                HIGH_CONFIDENCE, CONFIDENCE_THRESHOLD, AMBIGUITY_MARGIN = 0.9, 1.2, 0.1
-                if is_last_time: CONFIDENCE_THRESHOLD = 1.6 
-                
-                if top_score > CONFIDENCE_THRESHOLD:
-                    uncertainty = "low"
-                else:
-                    filtered_memories = [top]
-                    if len(memories) > 1 and not is_last_time:
-                        second = memories[1]
-                        if abs(second['score'] - top_score) < AMBIGUITY_MARGIN:
-                             uncertainty = "ambiguous"
-                             filtered_memories = [top, second]
-                        elif top_score < HIGH_CONFIDENCE: uncertainty = "high"
-                        else: uncertainty = "medium"
-                    else:
-                        uncertainty = "high" if top_score < HIGH_CONFIDENCE else "medium"
+        # --- 1. Get Context ---
+        context_summary = await get_context_summary(uid)
 
-                if category == "medication" and uncertainty in ["high", "medium"]:
-                    ask_confirmation = True
-
-            reply = build_recall_response(filtered_memories, time_range, uncertainty, ask_confirmation)
-            return {"action": "reply", "reply": reply, "intent": "recall"}
-
-        # --- 2. Intent: Completion ---
-        if any(x in text for x in ["i have", "i did", "i finished", "completed", "done with", "took my"]):
-             memory_engine.store_memory(text, {"uid": uid, "type": "activity_log"})
-             return {"action": "reply", "reply": "Okay, I've saved that to your memory.", "intent": "activity_log"}
-
-        # --- 3. Task Creation ---
-        df_triggers = ["remind", "add", "schedule", "task", "plan", "tomorrow", "today", " am", " pm", "at ", ":", "drink", "take", "eat", "buy", "go to", "call"]
-        import re
-        if bool(re.search(r'\b\d{3,4}\b', text)) or any(x in text for x in df_triggers):
-            parsed = parse_task_intent(text)
-            if parsed.get("is_termination"):
-                return {"action": "close", "reply": "Great, your plan is all set. Have a wonderful day!", "intent": "termination"}
-            
-            if parsed.get("is_task_request"):
-                task_name, time_str, date_offset = parsed.get("task_name"), parsed.get("time", "12:00"), parsed.get("date_offset", 0)
-                
-                if session_id in pending_confirmations:
-                    old = pending_confirmations[session_id]
-                    try:
-                        old_date = (datetime.now() + timedelta(days=old["date_offset"])).strftime("%Y-%m-%d")
-                        doc_id = get_schedule_doc_id(old["uid"], old_date)
-                        db.collection('schedules').document(doc_id).set({
-                            "userId": old["uid"], "date": old_date, "status": "active", "created_at": datetime.utcnow().isoformat(),
-                            "tasks": firestore.ArrayUnion([{
-                                "id": str(uuid.uuid4()), "task_name": old["task_name"], "time": old["time"], "type": "common",
-                                "completed": False, "completedAt": None, "scheduledAt": datetime.now().isoformat(), "graceMinutes": 30
-                            }])
-                        }, merge=True)
-                    except Exception as e: print(f"[AUTO-CONFIRM] Error: {e}")
-                
-                pending_confirmations[session_id] = {"task_name": task_name, "time": time_str, "date_offset": date_offset, "uid": uid}
-                day_phrase = "tomorrow" if date_offset == 1 else "today"
-                return {
-                    "action": "reply", "reply": f"I heard you say: '{req.text}'. I heard '{task_name}' at {time_str} for {day_phrase}. Is that correct? Say yes or no.",
-                    "intent": "task_creation", "is_confirmation": True, "task": {"name": task_name, "time": time_str, "date_offset": date_offset, "day_phrase": day_phrase}
-                }
-
-        # --- 4. Fallback: Close ---
-        if any(x in text for x in ["nothing more", "no more", "that is all", "that's all", "all done", "nothing else", "no thanks"]):
-             return {"action": "close", "reply": "Great, your plan is all set. Have a wonderful day!"}
-
-        # --- 5. Fallback: Schedule info ---
-        from app.services.time_utils import get_schedule_doc_id
-        doc_id = get_schedule_doc_id(uid, datetime.now().strftime("%Y-%m-%d"))
-        doc = db.collection('schedules').document(doc_id).get()
-        if doc.exists and ("schedule" in text or "tasks" in text):
-             count = len([t for t in doc.to_dict().get('tasks', []) if not t.get('completed')])
-             return {"action": "reply", "reply": f"You have {count} tasks remaining for today. Is there anything else you'd like to add or ask?"}
+        # --- 2. Use OpenAI for the main conversation ---
+        llm_result = await process_voice_with_llm(req.text, uid, session_id, context=context_summary)
+        reply = llm_result["reply"]
+        task_preview = llm_result.get("task")
         
-        return {"action": "reply", "reply": "I'm listening. You can tell me what you did, ask me about past activities, or add a task to your schedule. Is there anything else for today?"}
+        if task_preview:
+            # Prepare for confirmation
+            task_name = task_preview.get("name", "New Task")
+            time_str = task_preview.get("time", "12:00")
+            day_str = str(task_preview.get("day", "today"))
+            target_date = get_target_date(day_str)
+            
+            pending_confirmations[session_id] = {
+                "task_name": task_name,
+                "time": time_str,
+                "date": target_date,
+                "uid": uid,
+                "frequency": task_preview.get("frequency", "once"),
+                "reminder_offset_mins": task_preview.get("reminder_offset_mins", 0)
+            }
+            
+            return {
+                "action": "reply", "reply": reply, "intent": "task_creation", "is_confirmation": True,
+                "task": {"name": task_name, "time": time_str, "day_phrase": day_str}
+            }
+        
+        # Simple chat reply
+        return {"action": "reply", "reply": reply, "intent": llm_result["intent"]}
 
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/greet")
+async def get_greeting(uid: Optional[str] = None):
+    # If we have a uid, we can make the greeting context-aware!
+    if uid:
+        try:
+            context = await get_context_summary(uid)
+            # Use LLM for a truly natural greeting
+            res = await process_voice_with_llm("Give me a very short, warm, and natural greeting as Alex. Acknowledge the time of day if possible.", uid, f"{uid}_greet", context=context)
+            return {"reply": res["reply"]}
+        except Exception as e:
+            from app.services.logger import log_debug
+            log_debug("greet_error", {"error": str(e)})
+    
+    import random
+    return {"reply": random.choice(GREETINGS)}
 
 @router.get("/check_profile/{uid}")
 async def check_profile(uid: str):
@@ -250,10 +228,7 @@ async def check_profile(uid: str):
         doc = db.collection('elder_profiles').document(uid).get()
         if doc.exists:
             data = doc.to_dict()
-            return {
-                "exists": True,
-                **data
-            }
+            return {"exists": True, **data}
         return {"exists": False}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -263,32 +238,7 @@ async def create_profile(req: ProfileCreateRequest):
     try:
         db = firestore.client()
         uid = req.uid
-        
-        # Merge validated fields from Pydantic model
-        profile_data = req.model_dump(exclude_unset=True)
-        
-        # Ensure default behavior metrics (Cold Start)
-        defaults = {
-            "missed_meds_per_week": 0,
-            "missed_tasks_per_week": 0,
-            "avg_task_delay_min": 0,
-            "snoozes_per_day": 0,
-            "is_onboarding_complete": True,  # Mark as complete upon creation
-            "created_at": datetime.utcnow().isoformat()
-        }
-        for k, v in defaults.items():
-            if k not in profile_data:
-                profile_data[k] = v
-
-        # --- Run Prediction ---
-        from app.services.ml_inferences import predict_elder_risk
-        risk_result = predict_elder_risk(profile_data)
-        risk_result['prediction_updated_at'] = datetime.utcnow().isoformat()
-        profile_data.update(risk_result)
-
-        db.collection('elder_profiles').document(uid).set(profile_data, merge=True)
-        return {"message": "Profile created", "profile": profile_data}
-
+        db.collection('elder_profiles').document(uid).set(req.dict())
+        return {"message": "Profile created successfully"}
     except Exception as e:
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

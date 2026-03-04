@@ -35,13 +35,13 @@ def build_recall_response(memories: list, time_range: tuple, uncertainty_level: 
     # 1. Uncertainty Prefix
     prefix = ""
     if uncertainty_level == "high":
-        prefix = "I remember: "
+        prefix = "I remember this clearly: "
     elif uncertainty_level == "medium":
-        prefix = "I think "
+        prefix = "I'm pretty sure "
     elif uncertainty_level == "ambiguous":
-         return "I found two similar memories. Did you mean the one from " + format_timestamp(memories[0]['metadata'].get('timestamp', '')) + "?"
+         return "I found a couple of similar memories. Did you mean the one from " + format_timestamp(memories[0]['metadata'].get('timestamp', '')) + "?"
     else:
-         prefix = "I found this: "
+         prefix = "Here's what I found: "
 
     # 2. Limit List (Max 3)
     items = memories[:3]
