@@ -43,4 +43,20 @@ vocab.txt
 config.json
 model.safetensors
 
+dialogflow.json
+
+firebase.json
+
+journals
+
+uploads
+
+crema_d_wav\train
+
+crema_d_wav
 keys\dialogflow.json
+best_emotion_model.pt
+
+emotion_labels.json
+
+data
