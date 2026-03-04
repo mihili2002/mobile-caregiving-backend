@@ -144,7 +144,14 @@ async def process_voice_command(req: VoiceCommandRequest):
                     
                     doc = doc_ref.get()
                     if not doc.exists:
-                        doc_ref.set({"userId": task_uid, "date": target_date, "status": "active", "tasks": [new_task], "created_at": datetime.utcnow().isoformat()})
+                        doc_ref.set({
+                            "userId": task_uid, 
+                            "uid": task_uid,
+                            "date": target_date, 
+                            "status": "active", 
+                            "tasks": [new_task], 
+                            "created_at": datetime.utcnow().isoformat()
+                        })
                     else:
                         doc_ref.update({"tasks": firestore.ArrayUnion([new_task])})
                     
