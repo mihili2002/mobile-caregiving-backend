@@ -16,16 +16,33 @@ class VoiceCommandRequest(BaseModel):
     uid: str
     session_id: Optional[str] = None
 
+class FCMTokenUpdate(BaseModel):
+    uid: str
+    fcm_token: str
+
 class ProfileCreateRequest(BaseModel):
     uid: str
-    name: str
-    age: int
-    gender: str
-    chronic_conditions: List[str]
-    dietary_habit: str
-    food_allergies: str
-    preferred_cuisine: str
-    food_aversions: str
+    name: Optional[str] = "User"
+    age: Optional[int] = 65
+    long_term_illness: Optional[str] = "No"
+    
+    sleep_well_1to5: Optional[int] = 3
+    tired_day_1to5: Optional[int] = 3
+    
+    forget_recent_1to5: Optional[int] = 3
+    difficulty_remember_tasks_1to5: Optional[int] = 3
+    forget_take_meds_1to5: Optional[int] = 3
+    tasks_harder_1to5: Optional[int] = 3
+    
+    lonely_1to5: Optional[int] = 3
+    sad_anxious_1to5: Optional[int] = 3
+    social_talk_1to5: Optional[int] = 3
+    enjoy_hobbies_1to5: Optional[int] = 3
+    
+    comfortable_app_1to5: Optional[int] = 3
+    reminders_helpful_1to5: Optional[int] = 3
+    reminders_right_time_1to5: Optional[int] = 3
+    reminders_preference: Optional[str] = "Gentle Voice"
 
 # In-memory storage for pending confirmations (simplified for demo)
 # In production, use Redis or Firestore
@@ -236,9 +253,46 @@ async def check_profile(uid: str):
 @router.post("/create_profile", status_code=201)
 async def create_profile(req: ProfileCreateRequest):
     try:
+        from app.services.ml_inferences import predict_elder_risk
         db = firestore.client()
         uid = req.uid
-        db.collection('elder_profiles').document(uid).set(req.dict())
-        return {"message": "Profile created successfully"}
+        
+        # 1. Convert request to dict and add metadata
+        profile_data = req.dict()
+        profile_data['full_name'] = profile_data.pop('name', 'User')
+        profile_data['is_onboarding_complete'] = True
+        profile_data['created_at'] = datetime.utcnow().isoformat()
+        profile_data['updated_at'] = datetime.utcnow().isoformat()
+        
+        # 2. Run Risk Assessment immediately
+        risk_result = predict_elder_risk(profile_data)
+        profile_data.update(risk_result)
+        profile_data['prediction_updated_at'] = datetime.utcnow().isoformat()
+        
+        # 3. Save to Firestore
+        db.collection('elder_profiles').document(uid).set(profile_data)
+        
+        return {
+            "message": "Profile created successfully",
+            "profile": profile_data
+        }
     except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/update_fcm_token")
+async def update_fcm_token(req: FCMTokenUpdate):
+    try:
+        db = firestore.client()
+        uid = req.uid
+        fcm_token = req.fcm_token
+        
+        db.collection('elder_profiles').document(uid).update({
+            "fcm_token": fcm_token,
+            "updated_at": datetime.utcnow().isoformat()
+        })
+        
+        return {"message": "FCM token updated successfully"}
+    except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
