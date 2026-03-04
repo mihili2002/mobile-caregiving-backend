@@ -24,15 +24,18 @@ from app.api.routes import (
     behavior_routes,
     medication_routes,
 )
-from app.api.routes.elder import health_submissions, meal_plans as elder_meal_plans
-from app.api.routes.doctor import dashboard as doctor_dashboard, meal_plans as doctor_meal_plans
-from app.api.routes.chatbot_routes import router as chatbot_router
+from app.api.routes.elder import (
+    health_submissions,
+    meal_plans as elder_meal_plans,
+)
 
-# Services / workers
-from app.services import ml_inference, load_models
-from app.services.chatbot_service import ChatbotService
-from app.workers.scheduler_worker import start_scheduler
-from app.workers.aggregator_worker import start_aggregator
+from app.api.routes.doctor import (
+    dashboard as doctor_dashboard,
+    meal_plans as doctor_meal_plans,
+)
+
+from app.api.routes.chatbot_routes import router as chatbot_router
+from app.api.routes.therapy_routes import router as therapy_router
 
 mimetypes.add_type("audio/webm", ".webm")
 mimetypes.add_type("audio/mp4", ".m4a")
@@ -182,6 +185,12 @@ def startup():
     try:
         if not (PROJECT_ROOT / "ml").exists():
             print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}.")
+    try:
+        if not (PROJECT_ROOT / "ml").exists():
+            print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}.")
+
+        from app.services import ml_inference, load_models
+
         ml_inference.init_models(PROJECT_ROOT)
         print("✅ ML models loaded successfully")
     except Exception as e:
@@ -196,18 +205,26 @@ def startup():
 
     # 5) Chatbot service
     try:
+        from app.services.chatbot_service import ChatbotService
         app.state.chatbot_service = ChatbotService()
         print("✅ ChatbotService initialized")
     except Exception as e:
         print("⚠️ ChatbotService init failed. Reason:", str(e))
 
-    # 6) Background workers
-    try:
-        threading.Thread(target=start_scheduler, daemon=True).start()
-        threading.Thread(target=start_aggregator, daemon=True).start()
-        print("✅ Background workers started.")
-    except Exception as e:
-        print("⚠️ Background workers failed. Reason:", str(e))
+   # --- Background workers (disabled in dev mode)
+try:
+    from app.workers.scheduler_worker import start_scheduler
+    from app.workers.aggregator_worker import start_aggregator
+
+    # Disabled to prevent Firestore quota exhaustion
+    # threading.Thread(target=start_scheduler, daemon=True).start()
+    # threading.Thread(target=start_aggregator, daemon=True).start()
+
+    print("⚠️ Background workers disabled (dev mode).")
+
+except Exception as e:
+    print("⚠️ Worker import failed:", str(e))
+
 
 # =========================================================
 # BASIC ROUTES
@@ -319,14 +336,14 @@ async def get_daily_suggestions(uid: str):
 
                 is_morning = is_noon = is_night = False
 
-                if "1-0-1" in freq or "bd" in freq or "twice" in freq or "2 times" in freq:
+                if "1-0-1" in freq or "bd" in freq or "twice" in freq:
                     is_morning = True
                     is_night = True
-                elif "1-1-1" in freq or "tds" in freq or "three" in freq or "3 times" in freq:
+                elif "1-1-1" in freq or "tds" in freq or "three" in freq:
                     is_morning = True
                     is_noon = True
                     is_night = True
-                elif "1-0-0" in freq or "od" in freq or "once" in freq or "1 time" in freq:
+                elif "1-0-0" in freq or "od" in freq or "once" in freq:
                     is_morning = True
                 elif "0-0-1" in freq:
                     is_night = True
@@ -337,42 +354,36 @@ async def get_daily_suggestions(uid: str):
 
                 if is_morning:
                     t = calculate_time(meal_schedule["breakfast"], timing)
-                    med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Breakfast",
-                            "type": "medication",
-                            "id": med_id_base + "_am",
-                        }
-                    )
+                    med_tasks.append({
+                        "drug_name": drug_name,
+                        "dosage": m_data.get("dosage"),
+                        "time": t,
+                        "timing_label": f"{timing.replace('_', ' ').title()} - Breakfast",
+                        "type": "medication",
+                        "id": med_id_base + "_am",
+                    })
 
                 if is_noon:
                     t = calculate_time(meal_schedule["lunch"], timing)
-                    med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Lunch",
-                            "type": "medication",
-                            "id": med_id_base + "_noon",
-                        }
-                    )
+                    med_tasks.append({
+                        "drug_name": drug_name,
+                        "dosage": m_data.get("dosage"),
+                        "time": t,
+                        "timing_label": f"{timing.replace('_', ' ').title()} - Lunch",
+                        "type": "medication",
+                        "id": med_id_base + "_noon",
+                    })
 
                 if is_night:
                     t = calculate_time(meal_schedule["dinner"], timing)
-                    med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Dinner",
-                            "type": "medication",
-                            "id": med_id_base + "_pm",
-                        }
-                    )
+                    med_tasks.append({
+                        "drug_name": drug_name,
+                        "dosage": m_data.get("dosage"),
+                        "time": t,
+                        "timing_label": f"{timing.replace('_', ' ').title()} - Dinner",
+                        "type": "medication",
+                        "id": med_id_base + "_pm",
+                    })
 
         return {"common": common_tasks, "therapy": therapy_tasks, "medications": med_tasks}
 
@@ -400,3 +411,4 @@ app.include_router(ai_routes.router)
 app.include_router(schedule_routes.router)
 app.include_router(behavior_routes.router)
 app.include_router(medication_routes.router)
+app.include_router(therapy_router)
