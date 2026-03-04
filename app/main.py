@@ -1,5 +1,4 @@
 # app/main.py
-import os
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -7,8 +6,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.firebase import init_firebase, get_db
+from app.services.emotion_inference import EmotionPredictor
 
 # Routers
 from app.api.routes import (
@@ -31,30 +32,47 @@ from app.services.chatbot_service import ChatbotService
 from app.workers.scheduler_worker import start_scheduler
 from app.workers.aggregator_worker import start_aggregator
 
+import mimetypes
+
+mimetypes.add_type("audio/webm", ".webm")
+mimetypes.add_type("audio/mp4", ".m4a")
+mimetypes.add_type("audio/mpeg", ".mp3")
+mimetypes.add_type("audio/wav", ".wav")
+mimetypes.add_type("audio/ogg", ".ogg")
 
 # =========================================================
-# ✅ LOAD ENV (ONLY ONCE, BEFORE APP STARTUP)
+# ✅ PROJECT PATHS (single source of truth)
 # =========================================================
-BASE_DIR = Path(__file__).resolve().parent          # .../app
-PROJECT_ROOT = BASE_DIR.parent                      # repo root (contains /ml, .env, etc.)
+APP_DIR = Path(__file__).resolve().parent          # .../app
+PROJECT_ROOT = APP_DIR.parent.resolve()            # repo root (absolute)
 DOTENV_PATH = PROJECT_ROOT / ".env"
+UPLOAD_DIR = PROJECT_ROOT / "uploads"
 
+# Load env
 if DOTENV_PATH.exists():
     load_dotenv(dotenv_path=str(DOTENV_PATH), override=True)
 else:
     print(f"⚠️ WARNING: .env not found at: {DOTENV_PATH}")
 
-
 # =========================================================
-# ✅ FASTAPI APP (ONLY ONCE)
+# ✅ FASTAPI APP
 # =========================================================
 app = FastAPI(title="Mobile Caregiving Backend")
 
+# =========================================================
+# ✅ STATIC FILES (ONLY ONCE)
+# Serves ./uploads as /static/*
+# =========================================================
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+print("✅ PROJECT_ROOT =", PROJECT_ROOT)
+print("✅ UPLOAD_DIR   =", UPLOAD_DIR)
+print("✅ UPLOAD_DIR EXISTS? =", UPLOAD_DIR.exists())
+
+app.mount("/static", StaticFiles(directory=str(UPLOAD_DIR)), name="static")
 
 # =========================================================
-# ✅ CORS (ONLY ONCE)
-# - Flutter Web runs on random localhost ports
-# - Allow preflight OPTIONS
+# ✅ CORS
 # =========================================================
 app.add_middleware(
     CORSMiddleware,
@@ -64,51 +82,96 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # =========================================================
-# ✅ STARTUP (ONLY ONCE)
+# ✅ STARTUP
 # =========================================================
 @app.on_event("startup")
 def startup():
-    # --- Firebase init (safe in dev)
+    # -------------------------
+    # 1) Firebase init (must be first)
+    # -------------------------
     try:
         init_firebase()
         print("✅ Firebase initialized")
     except Exception as e:
         print("⚠️ Firebase not initialized (continuing). Reason:", str(e))
 
-    # --- ML Models (Member1) - ensure PROJECT_ROOT contains /ml
+    # -------------------------
+    # 2) EmotionPredictor init (AUTO-FIND FILES)
+    # -------------------------
+        # -------------------------
+    # 2) EmotionPredictor init (FIXED: load from models/emotion_model)
+    # -------------------------
+        # -------------------------
+    # 2) EmotionPredictor init (FIX: use correct paths)
+    # -------------------------
+    try:
+        base = PROJECT_ROOT / "ml" / "member2_chatbot" / "models"
+
+        model_path = base / "best_emotion_model.pt"
+        labels_path = base / "emotion_labels.json"
+
+        print("DEBUG Emotion base:", base)
+        print("DEBUG model_path:", model_path)
+        print("DEBUG labels_path:", labels_path)
+        print("DEBUG model exists?", model_path.exists())
+        print("DEBUG labels exists?", labels_path.exists())
+
+        if not model_path.exists() or not labels_path.exists():
+            raise FileNotFoundError("Emotion model files not found in ml/member2_chatbot/models/")
+
+        app.state.emotion_predictor = EmotionPredictor(
+            model_path=model_path,
+            labels_path=labels_path,
+            sr=16000,
+            target_len=64000,
+        )
+        print("✅ EmotionPredictor loaded successfully!")
+
+    except Exception as e:
+        app.state.emotion_predictor = None
+        print("❌ EmotionPredictor failed:", repr(e))
+
+
+
+    # -------------------------
+    # 3) ML Models
+    # -------------------------
     try:
         if not (PROJECT_ROOT / "ml").exists():
             print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}. Check your project structure.")
-
         ml_inference.init_models(PROJECT_ROOT)
         print("✅ ML models loaded successfully")
         print("Member1 ready =", ml_inference.member1_ready())
     except Exception as e:
         print("⚠️ ML models not loaded at startup. Reason:", str(e))
 
-    # --- AI models (if you use load_models)
+    # -------------------------
+    # 4) AI models
+    # -------------------------
     try:
         load_models()
         print("✅ load_models() completed")
     except Exception as e:
         print("⚠️ load_models() failed. Reason:", str(e))
 
-    # --- Chatbot service
+    # -------------------------
+    # 5) Chatbot service
+    # -------------------------
     try:
         app.state.chatbot_service = ChatbotService()
     except Exception as e:
         print("⚠️ ChatbotService init failed. Reason:", str(e))
 
-    # --- Background workers
+    # -------------------------
+    # 6) Background workers
+    # -------------------------
     try:
         threading.Thread(target=start_scheduler, daemon=True).start()
         threading.Thread(target=start_aggregator, daemon=True).start()
         print("INFO: Background workers started.")
     except Exception as e:
         print("⚠️ Background workers failed to start. Reason:", str(e))
-
 
 # =========================================================
 # ✅ BASIC ROUTES
@@ -117,14 +180,12 @@ def startup():
 async def root():
     return {"status": "running", "message": "Caregiving Backend is active"}
 
-
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
 
-
 # =========================================================
-# ✅ CONVERTED FLASK ROUTE -> FASTAPI (Your full logic kept)
+# ✅ DAILY SUGGESTIONS ROUTE
 # =========================================================
 @app.get("/get_daily_suggestions/{uid}")
 async def get_daily_suggestions(uid: str):
@@ -133,12 +194,10 @@ async def get_daily_suggestions(uid: str):
         raise HTTPException(status_code=500, detail="Firestore client not initialized")
 
     try:
-        # A. Fetch Profile
         doc = db.collection("elder_profiles").document(uid).get()
         if not doc.exists:
             raise HTTPException(status_code=404, detail="Profile not found")
 
-        # B. COMMON SECTION & MEAL DETECTION
         common_ref = (
             db.collection("common_routine_templates")
             .where("uid", "in", [uid, "GLOBAL"])
@@ -161,15 +220,9 @@ async def get_daily_suggestions(uid: str):
                 meal_schedule["dinner"] = t_str
 
             common_tasks.append(
-                {
-                    "task_name": c_data.get("task_name"),
-                    "default_time": t_str,
-                    "type": "common",
-                    "id": c.id,
-                }
+                {"task_name": c_data.get("task_name"), "default_time": t_str, "type": "common", "id": c.id}
             )
 
-        # C. THERAPY SECTION
         therapy_ref = db.collection("therapy_assignments").where("elder_id", "==", uid).stream()
         therapy_tasks = []
         for t in therapy_ref:
@@ -184,7 +237,6 @@ async def get_daily_suggestions(uid: str):
                 }
             )
 
-        # D. MEDICATION SECTION (SMART SCHEDULING)
         meds_ref = db.collection("patient_medications").where("elder_id", "==", uid).stream()
         med_tasks = []
 
@@ -237,40 +289,25 @@ async def get_daily_suggestions(uid: str):
                 if is_morning:
                     t = calculate_time(meal_schedule["breakfast"], timing)
                     med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Breakfast",
-                            "type": "medication",
-                            "id": med_id_base + "_am",
-                        }
+                        {"drug_name": drug_name, "dosage": m_data.get("dosage"), "time": t,
+                         "timing_label": f"{timing.replace('_', ' ').title()} - Breakfast",
+                         "type": "medication", "id": med_id_base + "_am"}
                     )
 
                 if is_noon:
                     t = calculate_time(meal_schedule["lunch"], timing)
                     med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Lunch",
-                            "type": "medication",
-                            "id": med_id_base + "_noon",
-                        }
+                        {"drug_name": drug_name, "dosage": m_data.get("dosage"), "time": t,
+                         "timing_label": f"{timing.replace('_', ' ').title()} - Lunch",
+                         "type": "medication", "id": med_id_base + "_noon"}
                     )
 
                 if is_night:
                     t = calculate_time(meal_schedule["dinner"], timing)
                     med_tasks.append(
-                        {
-                            "drug_name": drug_name,
-                            "dosage": m_data.get("dosage"),
-                            "time": t,
-                            "timing_label": f"{timing.replace('_', ' ').title()} - Dinner",
-                            "type": "medication",
-                            "id": med_id_base + "_pm",
-                        }
+                        {"drug_name": drug_name, "dosage": m_data.get("dosage"), "time": t,
+                         "timing_label": f"{timing.replace('_', ' ').title()} - Dinner",
+                         "type": "medication", "id": med_id_base + "_pm"}
                     )
 
         return {"common": common_tasks, "therapy": therapy_tasks, "medications": med_tasks}
@@ -281,9 +318,8 @@ async def get_daily_suggestions(uid: str):
         print(f"Aggregator Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # =========================================================
-# ✅ INCLUDE ROUTERS (ONLY ONCE)
+# ✅ INCLUDE ROUTERS
 # =========================================================
 app.include_router(auth.router, prefix="/api")
 app.include_router(patients.router, prefix="/api")
@@ -300,5 +336,3 @@ app.include_router(ai_routes.router)
 app.include_router(schedule_routes.router)
 app.include_router(behavior_routes.router)
 app.include_router(medication_routes.router)
-
-
