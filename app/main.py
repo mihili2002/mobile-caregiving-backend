@@ -1,12 +1,15 @@
 # app/main.py
-import os
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
+import mimetypes
+import re
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.firebase import init_firebase, get_db
 
@@ -34,49 +37,154 @@ from app.api.routes.doctor import (
 from app.api.routes.chatbot_routes import router as chatbot_router
 from app.api.routes.therapy_routes import router as therapy_router
 
+mimetypes.add_type("audio/webm", ".webm")
+mimetypes.add_type("audio/mp4", ".m4a")
+mimetypes.add_type("audio/mpeg", ".mp3")
+mimetypes.add_type("audio/wav", ".wav")
+mimetypes.add_type("audio/ogg", ".ogg")
 
 # =========================================================
-# ✅ LOAD ENV (ONLY ONCE)
+# PROJECT PATHS
 # =========================================================
-BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent
+APP_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = APP_DIR.parent.resolve()
 DOTENV_PATH = PROJECT_ROOT / ".env"
+UPLOAD_DIR = PROJECT_ROOT / "uploads"
 
 if DOTENV_PATH.exists():
     load_dotenv(dotenv_path=str(DOTENV_PATH), override=True)
 else:
-    print(f"⚠️ WARNING: .env not found at: {DOTENV_PATH}")
-
+    print(f"WARNING: .env not found at: {DOTENV_PATH}")
 
 # =========================================================
-# ✅ FASTAPI APP (CREATE BEFORE USING app)
+# FASTAPI APP
 # =========================================================
 app = FastAPI(title="Mobile Caregiving Backend")
 
+# =========================================================
+# STATIC FILES
+# =========================================================
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+print("PROJECT_ROOT =", PROJECT_ROOT)
+print("UPLOAD_DIR   =", UPLOAD_DIR)
+print("UPLOAD_DIR EXISTS? =", UPLOAD_DIR.exists())
+
+app.mount("/static", StaticFiles(directory=str(UPLOAD_DIR)), name="static")
 
 # =========================================================
-# ✅ CORS
+# CORS (ALLOW ANY localhost PORT for dev)
 # =========================================================
+ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+_ORIGIN_RE = re.compile(ORIGIN_REGEX)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
+# =========================================================
+# Preflight handler (middleware level - OPTIONS never 400)
+# =========================================================
+@app.middleware("http")
+async def handle_preflight(request: Request, call_next):
+    if request.method == "OPTIONS":
+        origin = request.headers.get("origin")
+        headers = {}
+
+        if origin and _ORIGIN_RE.match(origin):
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+            headers["Access-Control-Allow-Headers"] = request.headers.get(
+                "access-control-request-headers", "*"
+            )
+            headers["Access-Control-Allow-Methods"] = request.headers.get(
+                "access-control-request-method", "GET,POST,PUT,DELETE,OPTIONS"
+            )
+
+        return Response(status_code=204, headers=headers)
+
+    return await call_next(request)
 
 # =========================================================
-# ✅ STARTUP
+# Force CORS headers on ALL errors (prevents "CORS blocked" on 500/429)
+# =========================================================
+def _cors_headers_for_request(request: Request) -> dict:
+    origin = request.headers.get("origin")
+    if origin and _ORIGIN_RE.match(origin):
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "*",
+        }
+    return {}
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=_cors_headers_for_request(request),
+        )
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "error": str(exc)},
+        headers=_cors_headers_for_request(request),
+    )
+
+# =========================================================
+# STARTUP
 # =========================================================
 @app.on_event("startup")
 def startup():
+    # 1) Firebase
     try:
         init_firebase()
         print("✅ Firebase initialized")
     except Exception as e:
-        print("⚠️ Firebase not initialized (continuing). Reason:", str(e))
+        print("⚠️ Firebase not initialized. Reason:", str(e))
 
+    # 2) EmotionPredictor
+    try:
+        from app.services.emotion_predictor import EmotionPredictor
+
+        emotion_models_dir = PROJECT_ROOT / "model"
+
+        if not (emotion_models_dir / "emotion_model.pkl").exists():
+            emotion_models_dir = Path(r"C:\Users\ASUS\Desktop\IME\mobile-caregiving-backend\model")
+
+        model_path = emotion_models_dir / "emotion_model.pkl"
+        scaler_path = emotion_models_dir / "scaler.pkl"
+        encoder_path = emotion_models_dir / "label_encoder.pkl"
+
+        if not model_path.exists():
+            raise FileNotFoundError(f"emotion_model.pkl not found at {model_path}")
+        if not scaler_path.exists():
+            raise FileNotFoundError(f"scaler.pkl not found at {scaler_path}")
+        if not encoder_path.exists():
+            raise FileNotFoundError(f"label_encoder.pkl not found at {encoder_path}")
+
+        app.state.emotion_predictor = EmotionPredictor(
+            model_path=str(model_path),
+            scaler_path=str(scaler_path),
+            encoder_path=str(encoder_path),
+        )
+        print("✅ EmotionPredictor loaded!")
+    except Exception as e:
+        app.state.emotion_predictor = None
+        print("❌ EmotionPredictor failed:", repr(e))
+
+    # 3) ML Models
+    try:
+        if not (PROJECT_ROOT / "ml").exists():
+            print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}.")
     try:
         if not (PROJECT_ROOT / "ml").exists():
             print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}.")
@@ -85,13 +193,21 @@ def startup():
 
         ml_inference.init_models(PROJECT_ROOT)
         print("✅ ML models loaded successfully")
-        print("Member1 ready =", ml_inference.member1_ready())
     except Exception as e:
-        print("⚠️ ML models not loaded at startup. Reason:", str(e))
+        print("⚠️ ML models not loaded. Reason:", str(e))
 
+    # 4) AI models
+    try:
+        load_models()
+        print("✅ load_models() completed")
+    except Exception as e:
+        print("⚠️ load_models() failed. Reason:", str(e))
+
+    # 5) Chatbot service
     try:
         from app.services.chatbot_service import ChatbotService
         app.state.chatbot_service = ChatbotService()
+        print("✅ ChatbotService initialized")
     except Exception as e:
         print("⚠️ ChatbotService init failed. Reason:", str(e))
 
@@ -111,20 +227,18 @@ except Exception as e:
 
 
 # =========================================================
-# ✅ BASIC ROUTES
+# BASIC ROUTES
 # =========================================================
 @app.get("/")
 async def root():
     return {"status": "running", "message": "Caregiving Backend is active"}
 
-
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
 
-
 # =========================================================
-# ✅ YOUR EXISTING get_daily_suggestions ROUTE (UNCHANGED)
+# DAILY SUGGESTIONS ROUTE
 # =========================================================
 @app.get("/get_daily_suggestions/{uid}")
 async def get_daily_suggestions(uid: str):
@@ -167,7 +281,11 @@ async def get_daily_suggestions(uid: str):
                 }
             )
 
-        therapy_ref = db.collection("therapy_assignments").where("elder_id", "==", uid).stream()
+        therapy_ref = (
+            db.collection("therapy_assignments")
+            .where("elder_id", "==", uid)
+            .stream()
+        )
         therapy_tasks = []
         for t in therapy_ref:
             t_data = t.to_dict() or {}
@@ -181,7 +299,11 @@ async def get_daily_suggestions(uid: str):
                 }
             )
 
-        meds_ref = db.collection("patient_medications").where("elder_id", "==", uid).stream()
+        meds_ref = (
+            db.collection("patient_medications")
+            .where("elder_id", "==", uid)
+            .stream()
+        )
         med_tasks = []
 
         def calculate_time(base_time_str: str, timing_type: str) -> str:
@@ -271,9 +393,8 @@ async def get_daily_suggestions(uid: str):
         print(f"Aggregator Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # =========================================================
-# ✅ INCLUDE ROUTERS (NOW AFTER app IS CREATED)
+# INCLUDE ROUTERS
 # =========================================================
 app.include_router(auth.router, prefix="/api")
 app.include_router(patients.router, prefix="/api")
