@@ -82,11 +82,14 @@ def get_food_recommendations(
     disease = " ".join(patient.get("chronic_conditions", [])).lower()
     dietary = str(patient.get("dietary_habit", "")).lower()
 
-    # ✅ FIX — this variable was missing
-    meal_plan = str(targets.get("Recommended_Meal_Plan", "")).lower()
+    meal_plan = targets.get("Recommended_Meal_Plan")
+    if meal_plan is None:
+      meal_plan = ""
+    meal_plan = str(meal_plan).lower()
 
     allergies = parse_list(patient.get("food_allergies", ""))
     aversions = parse_list(patient.get("food_aversions", ""))
+
 
     # -------------------------------------------------
     # A) Dietary filters (SOFT)
@@ -189,5 +192,7 @@ def get_food_recommendations(
     ]
 
     keep_cols = [c for c in keep_cols if c in candidate_pool.columns]
+
+    print("FOOD FILTER RESULT COUNT:", len(candidate_pool))
 
     return candidate_pool[keep_cols].to_dict(orient="records")

@@ -19,17 +19,22 @@ async def generate_meal_plan(
     if db is None:
         raise HTTPException(status_code=500, detail="Firestore client not initialized")
 
-    # 1) Load health submission (latest pending if not provided)
+    # ----------------------------------------------------
+    # 1) Load health submission
+    # ----------------------------------------------------
     if health_submission_id:
         submission_doc = (
             db.collection("elder_health_submissions")
             .document(health_submission_id)
             .get()
         )
+
         if not submission_doc.exists:
             raise HTTPException(status_code=404, detail="Submission not found")
+
         submission = submission_doc.to_dict()
         submission["id"] = health_submission_id
+
     else:
         docs = (
             db.collection("elder_health_submissions")
@@ -39,29 +44,55 @@ async def generate_meal_plan(
             .limit(1)
             .stream()
         )
+
         items = [{"id": d.id, **d.to_dict()} for d in docs]
+
         if not items:
             raise HTTPException(status_code=404, detail="No pending submission found")
+
         submission = items[0]
         health_submission_id = submission["id"]
 
-    # 2) Build meal plan using pipeline (ML / AI)
+    # ----------------------------------------------------
+    # 2) Build meal plan using pipeline
+    # ----------------------------------------------------
     try:
         print("========== START MEAL PLAN PIPELINE ==========")
-        
+
         generated = build_meal_plan(submission)
 
-        print("PIPELINE OUTPUT:", generated)
+        print("PIPELINE OUTPUT:")
+        print(generated)
+
         print("===============================================")
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Meal plan generation failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Meal plan generation failed: {e}"
+        )
 
-    # 3) Save MealPlan doc
+    # ----------------------------------------------------
+    # 3) Extract days robustly
+    # ----------------------------------------------------
+    days = generated.get("week") or generated.get("week_list") or []
+
+    # Support nested weekly_meal_plan
+    if not days and isinstance(generated.get("weekly_meal_plan"), dict):
+        days = generated["weekly_meal_plan"].get("week") or []
+
+    # Final safety check
+    if not isinstance(days, list):
+        print("WARNING: Invalid week format from pipeline. Forcing empty list.")
+        days = []
+
+    print("FINAL DAYS LENGTH:", len(days))
+
+    # ----------------------------------------------------
+    # 4) Save MealPlan document
+    # ----------------------------------------------------
     start_date = date.today()
     end_date = start_date + timedelta(days=6)
-
-    weekly = generated.get("weekly_meal_plan", {})
 
     meal_plan_doc = {
         "elder_id": elder_id,
@@ -71,18 +102,24 @@ async def generate_meal_plan(
         "end_date": end_date.isoformat(),
         "status": "pending",
 
-        "days": generated.get("weekly_meal_plan", {}).get("week", []),
+        # WEEK DATA
+        "days": days,
 
-        "dietitian_notes": generated.get("weekly_meal_plan", {}).get("dietitian_notes"),
+        # Save raw pipeline output for debugging
+        "weekly_raw": generated,
 
+        # Additional metadata
+        "dietitian_notes": generated.get("dietitian_notes") or {},
         "nutrient_targets": generated.get("nutrient_targets"),
-        "warnings": generated.get("warnings"),
+        "warnings": generated.get("warnings") or [],
     }
 
     new_ref = db.collection("meal_plans").document()
     new_ref.set(meal_plan_doc)
 
-    # 4) Update submission reviewed info
+    # ----------------------------------------------------
+    # 5) Update submission reviewed info
+    # ----------------------------------------------------
     db.collection("elder_health_submissions").document(health_submission_id).update({
         "reviewed_by": user["uid"],
         "reviewed_at": datetime.now(timezone.utc),
@@ -91,39 +128,53 @@ async def generate_meal_plan(
     return {"id": new_ref.id, **meal_plan_doc}
 
 
+# ----------------------------------------------------
+# APPROVE MEAL PLAN
+# ----------------------------------------------------
 @router.post("/{meal_plan_id}/approve")
-async def approve_meal_plan(meal_plan_id: str, user=Depends(require_role(["doctor"]))):
+async def approve_meal_plan(
+    meal_plan_id: str,
+    user=Depends(require_role(["doctor"]))
+):
     db = get_db()
+
     if db is None:
         raise HTTPException(status_code=500, detail="Firestore client not initialized")
 
     ref = db.collection("meal_plans").document(meal_plan_id)
     doc = ref.get()
+
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Meal plan not found")
 
-    # 1) Update meal plan status
+    # Update meal plan
     ref.update({
         "status": "approved",
         "approved_by": user["uid"],
         "approved_at": datetime.now(timezone.utc),
     })
 
-    # 2) Also update linked health submission (if any)
+    # Update linked submission
     mp = doc.to_dict() or {}
     health_submission_id = mp.get("health_submission_id")
+
     if health_submission_id:
         try:
             submission_ref = db.collection("elder_health_submissions").document(health_submission_id)
             submission_doc = submission_ref.get()
+
             if submission_doc.exists:
                 submission_ref.update({"status": "approved"})
+
         except Exception:
             pass
 
     return {"message": "Meal plan approved"}
 
 
+# ----------------------------------------------------
+# REJECT MEAL PLAN
+# ----------------------------------------------------
 @router.post("/{meal_plan_id}/reject")
 async def reject_meal_plan(
     meal_plan_id: str,
@@ -131,11 +182,13 @@ async def reject_meal_plan(
     user=Depends(require_role(["doctor"]))
 ):
     db = get_db()
+
     if db is None:
         raise HTTPException(status_code=500, detail="Firestore client not initialized")
 
     ref = db.collection("meal_plans").document(meal_plan_id)
     doc = ref.get()
+
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Meal plan not found")
 
@@ -146,21 +199,26 @@ async def reject_meal_plan(
         "doctor_feedback": doctor_feedback,
     })
 
-    # 2) Also update linked health submission (if any)
     mp = doc.to_dict() or {}
     health_submission_id = mp.get("health_submission_id")
+
     if health_submission_id:
         try:
             submission_ref = db.collection("elder_health_submissions").document(health_submission_id)
             submission_doc = submission_ref.get()
+
             if submission_doc.exists:
                 submission_ref.update({"status": "rejected"})
+
         except Exception:
             pass
 
     return {"message": "Meal plan rejected"}
 
 
+# ----------------------------------------------------
+# EDIT MEAL PLAN
+# ----------------------------------------------------
 @router.put("/{meal_plan_id}")
 async def edit_meal_plan(
     meal_plan_id: str,
@@ -168,15 +226,18 @@ async def edit_meal_plan(
     user=Depends(require_role(["doctor"]))
 ):
     db = get_db()
+
     if db is None:
         raise HTTPException(status_code=500, detail="Firestore client not initialized")
 
     ref = db.collection("meal_plans").document(meal_plan_id)
     doc = ref.get()
+
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Meal plan not found")
 
     current = doc.to_dict() or {}
+
     if current.get("status") == "completed":
         raise HTTPException(status_code=400, detail="Cannot edit completed meal plan")
 
@@ -187,4 +248,5 @@ async def edit_meal_plan(
     safe_updates["updated_by"] = user["uid"]
 
     ref.update(safe_updates)
+
     return {"message": "Meal plan updated", "updates": safe_updates}
