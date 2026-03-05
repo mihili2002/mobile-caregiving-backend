@@ -47,13 +47,21 @@ async def generate_meal_plan(
 
     # 2) Build meal plan using pipeline (ML / AI)
     try:
+        print("========== START MEAL PLAN PIPELINE ==========")
+        
         generated = build_meal_plan(submission)
+
+        print("PIPELINE OUTPUT:", generated)
+        print("===============================================")
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Meal plan generation failed: {e}")
 
     # 3) Save MealPlan doc
     start_date = date.today()
     end_date = start_date + timedelta(days=6)
+
+    weekly = generated.get("weekly_meal_plan", {})
 
     meal_plan_doc = {
         "elder_id": elder_id,
@@ -62,8 +70,11 @@ async def generate_meal_plan(
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
         "status": "pending",
+
         "days": generated.get("weekly_meal_plan", {}).get("week", []),
+
         "dietitian_notes": generated.get("weekly_meal_plan", {}).get("dietitian_notes"),
+
         "nutrient_targets": generated.get("nutrient_targets"),
         "warnings": generated.get("warnings"),
     }

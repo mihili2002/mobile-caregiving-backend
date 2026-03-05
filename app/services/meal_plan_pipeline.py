@@ -50,6 +50,12 @@ def build_meal_plan(patient: dict) -> dict:
     try:
         foods = get_food_recommendations(patient, nutrients, max_items=30)
 
+        print("================================")
+        print("FOODS SENT TO LLM:", len(foods))
+        for f in foods[:5]:
+          print("Food sample:", f)
+        print("================================")
+
         for i, food in enumerate(foods, start=1):
             print(f"{i}. {food}")
     except Exception as e:
@@ -68,9 +74,15 @@ def build_meal_plan(patient: dict) -> dict:
         }
         warnings.append("LLM weekly meal plan generation failed")
 
+        print("================================")
+        print("FOODS SENT TO LLM:", len(foods))
+        print("LLM RESPONSE:", weekly_meal_plan)
+        print("================================")
+
     return {
-        "nutrient_targets": nutrients,
-        "food_options": foods,
-        "weekly_meal_plan": weekly_meal_plan,
-        "warnings": warnings,
-    }
+    "nutrient_targets": nutrients,
+    "food_options": foods,
+    "week": weekly_meal_plan.get("week", []),
+    "dietitian_notes": weekly_meal_plan.get("dietitian_notes", {}),
+    "warnings": warnings,
+}

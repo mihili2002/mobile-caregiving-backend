@@ -2,6 +2,7 @@
 
 import os
 import json
+import re
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -180,7 +181,17 @@ IMPORTANT RULES:
     # Clean accidental code fences
     text = text.replace("```json", "").replace("```", "").strip()
 
+    
+
+  # Extract JSON safely
     try:
-        return json.loads(text)
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+        else:
+            raise ValueError("No JSON found in LLM output")
     except Exception:
-        return {"error": "Invalid LLM output", "raw": text}
+        return {
+            "error": "Invalid LLM output",
+            "raw": text
+        }
