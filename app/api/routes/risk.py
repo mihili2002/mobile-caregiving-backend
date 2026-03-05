@@ -70,10 +70,11 @@ def get_history(
     # Firestore requires indexed query for where + order_by
     # createdAt is server timestamp, so we filter by createdAt >= since
     try:
+        from google.cloud.firestore import FieldFilter
         q = (
             db.collection("risk_assessments")
-            .where("residentId", "==", resident_id)
-            .where("createdAt", ">=", since)
+            .where(filter=FieldFilter("residentId", "==", resident_id))
+            .where(filter=FieldFilter("createdAt", ">=", since))
             .order_by("createdAt", direction=firestore.Query.ASCENDING)
         )
 
