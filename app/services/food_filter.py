@@ -1,5 +1,3 @@
-##food_filter.py
-
 import pandas as pd
 import re
 import random

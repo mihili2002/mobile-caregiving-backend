@@ -1,5 +1,3 @@
-
-
 # app/services/meal_plan_pipeline.py
 
 from app.services import ml_inference
