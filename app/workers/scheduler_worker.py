@@ -173,4 +173,47 @@ def check_missed_tasks():
 
         # 5. Save updates to Firestore if any task changed
         if updated:
-            doc.reference.update({"tasks": tasks})
+            # Use a transaction to prevent overwriting user-initiated changes (like marking a task as completed)
+            transaction = db.transaction()
+            
+            @firestore.transactional
+            def apply_task_updates(transaction, doc_ref, modified_tasks):
+                snapshot = doc_ref.get(transaction=transaction)
+                if not snapshot.exists:
+                    return False
+                
+                latest_data = snapshot.to_dict()
+                latest_tasks = latest_data.get('tasks', [])
+                any_merged = False
+                
+                # Merge our reminder/status updates into the latest task list
+                for mod_t in modified_tasks:
+                    mod_id = mod_t.get('id') or mod_t.get('taskId')
+                    for t in latest_tasks:
+                        curr_id = t.get('id') or t.get('taskId')
+                        if curr_id == mod_id:
+                            # CRITICAL: If the task is now completed in the latest DB state, 
+                            # do NOT overwrite it with our 'reminder_sent' or 'missed' status.
+                            if t.get('completed') or t.get('isCompleted'):
+                                continue
+                            
+                            # Update reminder count and status if our local version is ahead
+                            if mod_t.get('reminder_count', 0) > t.get('reminder_count', 0):
+                                t['reminder_count'] = mod_t['reminder_count']
+                                t['last_reminder_at'] = mod_t.get('last_reminder_at')
+                                t['status'] = mod_t.get('status')
+                                any_merged = True
+                            
+                            if mod_t.get('status') == 'missed' and t.get('status') != 'missed':
+                                t['status'] = 'missed'
+                                any_merged = True
+                            break
+                
+                if any_merged:
+                    transaction.update(doc_ref, {"tasks": latest_tasks})
+                return any_merged
+
+            try:
+                apply_task_updates(transaction, doc.reference, tasks)
+            except Exception as e:
+                print(f"Failed to update tasks for {elder_id} safely: {e}")

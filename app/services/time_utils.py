@@ -102,3 +102,19 @@ def is_last_time_query(text: str) -> bool:
     text = text.lower()
     triggers = ["last time", "when did i last", "most recent", "latest"]
     return any(t in text for t in triggers)
+
+def combine_date_time(date_str: str, time_str: str) -> str:
+    """
+    Combines a date string (YYYY-MM-DD) and a time string (HH:MM or H:MM)
+    into an ISO 8601 timestamp (YYYY-MM-DDTHH:MM:00).
+    """
+    try:
+        # Normalize time_str if it's H:MM
+        if len(time_str.split(':')[0]) == 1:
+            time_str = "0" + time_str
+            
+        # Basic validation/formatting to ensure it's HH:MM
+        return f"{date_str}T{time_str}:00"
+    except Exception:
+        # Fallback to now if something goes wrong, though should be rare
+        return datetime.now().isoformat()

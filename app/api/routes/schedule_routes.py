@@ -290,28 +290,35 @@ async def complete_task(req: CompleteTaskRequest):
         if not doc.exists:
             raise HTTPException(status_code=404, detail="Schedule not found")
             
-        t_data = doc.to_dict()
-        tasks = t_data.get('tasks', [])
+        @firestore.transactional
+        def complete_in_transaction(transaction, doc_ref, task_id):
+            snapshot = doc_ref.get(transaction=transaction)
+            if not snapshot.exists:
+                return None
+            
+            data = snapshot.to_dict()
+            tasks = data.get('tasks', [])
+            target = None
+            
+            for t in tasks:
+                tid = t.get('id') or t.get('taskId')
+                if tid == task_id:
+                    t['status'] = 'completed'
+                    t['completedAt'] = datetime.utcnow().isoformat()
+                    t['completed'] = True 
+                    target = t
+                    break
+            
+            if target:
+                transaction.update(doc_ref, {"tasks": tasks})
+            return target
+
+        target_task = complete_in_transaction(db.transaction(), doc_ref, task_id)
         
-        target_task = None
-        updated = False
-        
-        for t in tasks:
-            tid = t.get('id') or t.get('taskId')
-            if tid == task_id:
-                t['status'] = 'completed'
-                now_iso = datetime.utcnow().isoformat()
-                t['completedAt'] = now_iso
-                t['completed'] = True 
-                
-                target_task = t
-                updated = True
-                break
-        
-        if not updated:
+        if not target_task:
             raise HTTPException(status_code=404, detail="Task not found")
             
-        doc_ref.update({"tasks": tasks})
+        # Log event and store memory
         
         # Log event and store memory
         try:
