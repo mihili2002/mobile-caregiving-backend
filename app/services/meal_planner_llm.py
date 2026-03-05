@@ -4,11 +4,10 @@ import os
 import json
 from pathlib import Path
 from typing import Dict, List, Any
-
 from dotenv import load_dotenv
 
 try:
-    import google.generativeai as genai
+    from google import genai
 except ImportError:
     genai = None
 
@@ -25,20 +24,22 @@ def _get_gemini_client():
     Lazily create Gemini client.
     This prevents your app from crashing on startup if key is missing.
     """
+
     if genai is None:
         raise RuntimeError(
-            "google.generativeai is not installed. Install it with: pip install google-generativeai"
+            "google.generativeai is not installed. Install it with: "
+            "pip install google-generativeai"
         )
 
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+
     if not api_key:
         raise RuntimeError(
-            "Gemini API key not found. Set GOOGLE_API_KEY (or GEMINI_API_KEY) in .env "
-            "or as an environment variable."
+            "Gemini API key not found. Set GOOGLE_API_KEY (or GEMINI_API_KEY) "
+            "in .env or as an environment variable."
         )
 
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-2.5-flash")
+    return genai.Client(api_key=api_key)
 
 
 def generate_weekly_meal_plan(
@@ -58,22 +59,22 @@ def generate_weekly_meal_plan(
         }
 
     foods_text = "\n".join(
-        f"- {f.get('Food')} ({f.get('Calories (kcal)')} kcal, "
-        f"{f.get('Carbohydrate (g)')}g carbs, {f.get('Protein (g)')}g protein, {f.get('Fat (g)')}g fat)"
+        f"- {f.get('Food')} "
+        f"({f.get('Calories (kcal)')} kcal, "
+        f"{f.get('Carbohydrate (g)')}g carbs, "
+        f"{f.get('Protein (g)')}g protein, "
+        f"{f.get('Fat (g)')}g fat)"
         for f in foods
     )
 
     prompt = f"""
-You are a senior clinical dietician.
-
-Create a **7-day weekly meal plan** for an elderly user.
+You are a senior clinical dietician. Create a **7-day weekly meal plan** for an elderly user.
 
 IMPORTANT RULES:
 - ONLY use foods from the Allowed Foods list.
 - DO NOT include foods not listed.
 - Use simple, elder-friendly portions (NO decimals like 0.75 serving).
-- Portion must be in grams/ml or household measures:
-  e.g. "150g", "250ml", "1 bowl", "2 string hoppers", "1 slice", "1 cup".
+- Portion must be in grams/ml or household measures: e.g. "150g", "250ml", "1 bowl", "2 string hoppers", "1 slice", "1 cup".
 - Must respect allergies and aversions.
 - Keep plan mild (non-spicy) when aversion is spicy.
 - For hypertension/heart disease: prefer low-oil, low-sodium preparation notes.
@@ -175,6 +176,7 @@ IMPORTANT RULES:
 
     model = _get_gemini_client()
     response = model.generate_content(prompt)
+
     text = (response.text or "").strip()
 
     # Clean accidental code fences
@@ -183,4 +185,7 @@ IMPORTANT RULES:
     try:
         return json.loads(text)
     except Exception:
-        return {"error": "Invalid LLM output", "raw": text}
+        return {
+            "error": "Invalid LLM output",
+            "raw": text
+        }
