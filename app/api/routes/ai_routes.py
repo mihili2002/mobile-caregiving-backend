@@ -5,6 +5,7 @@ import uuid
 import traceback
 from datetime import datetime, timedelta
 from firebase_admin import firestore
+import re
 
 from app.models.schemas import ExtractionResponse, Medication
 from app.services.openai_service import process_voice_with_llm, RECALL_SYSTEM_PROMPT
@@ -180,13 +181,40 @@ def normalize_timing(t: str) -> str:
         return "after_meal"
     if x in ["with food", "with meal"]:
         return "with_meal"
-    if x in ["mane", "morning", "am"]:
-        return "unknown"
-    if x in ["before_meal", "after_meal", "with_meal", "unknown", "bedtime", "night"]:
-        return x
-    if len(x.split()) == 1 and x.isalpha() and len(x) > 2:
+    if x in ["bedtime", "night", "nocte", "at night", "hs"]:
+        return "bedtime"
+    if x in ["morning", "mane", "in the morning"]:
+        return "morning"
+    if x in ["afternoon"]:
+        return "afternoon"
+    if x in ["evening"]:
+        return "evening"
+    if x in ["as needed", "sos", "attack", "prn"]:
+        return "as_needed"
+    
+    # Check for direct matches with allowed literals
+    allowed = {"before_meal", "after_meal", "with_meal", "bedtime", "morning", "afternoon", "evening", "as_needed", "unknown"}
+    if x in allowed:
         return x
     return "unknown"
+
+def parse_duration_days(text: Optional[str]) -> Optional[int]:
+    if not text:
+        return None
+    t = text.lower()
+    m = re.search(r"(\d+)\s*(day|week|month|d|w|m)", t)
+    if not m:
+        return None
+    val = int(m.group(1))
+    unit = m.group(2)
+    if unit.startswith("w"):
+        return val * 7
+    if unit.startswith("m"):
+        return val * 30
+    return val
+
+def clean_drug_prefix(name: str) -> str:
+    return re.sub(r"^(tab|cap|syp|inj|susp|tab\.|cap\.|syp\.|inj\.)\s+", "", name, flags=re.I).strip()
 
 @router.post("/prescriptions/extract", response_model=ExtractionResponse)
 async def extract_prescription(elder_id: str = Form(...), file: UploadFile = File(...)):
@@ -197,15 +225,53 @@ async def extract_prescription(elder_id: str = Form(...), file: UploadFile = Fil
 
         extracted, method = extract_medications(file_bytes, filename, content_type)
         meds = extracted.get("medications", []) or []
+        doc_raw_text = extracted.get("raw_text", "")
 
         validated = []
         for m in meds:
              m["timing"] = normalize_timing(str(m.get("timing", "")))
+             
+             # Post-extraction normalization for frequency if LLM missed it but got the text
+             if not m.get("frequency_per_day") and m.get("frequency_text"):
+                 f_text = str(m.get("frequency_text", "")).lower()
+                 if "od" in f_text: m["frequency_per_day"] = 1
+                 elif "bd" in f_text: m["frequency_per_day"] = 2
+                 elif "tds" in f_text or "tid" in f_text: m["frequency_per_day"] = 3
+                 elif "qid" in f_text: m["frequency_per_day"] = 4
+             
+             # Duration parsing
+             if not m.get("duration_days") and m.get("duration_text"):
+                 m["duration_days"] = parse_duration_days(m.get("duration_text"))
+             
+             # Dosage compatibility for UI
+             s = m.get("strength")
+             m["dosage"] = s or "unknown"
+             
+             # Clean drug name (restored/refined)
+             m["drug_name"] = clean_drug_prefix(m.get("drug_name", ""))
+
+             # Date calculation
+             if not m.get("from_date"):
+                 m["from_date"] = datetime.now().strftime("%Y-%m-%d")
+             
+             if m.get("duration_days") and m.get("from_date"):
+                 try:
+                     start_dt = datetime.strptime(m["from_date"], "%Y-%m-%d")
+                     end_dt = start_dt + timedelta(days=m["duration_days"])
+                     m["to_date"] = end_dt.strftime("%Y-%m-%d")
+                 except:
+                     pass
+
              validated.append(Medication(**m))
         
-        return ExtractionResponse(elder_id=elder_id, medications=validated, used_method=method)
-
+        return ExtractionResponse(
+            elder_id=elder_id, 
+            medications=validated, 
+            used_method=method,
+            raw_text=doc_raw_text
+        )
     except Exception as e:
+        print(f"Prescription extraction API error: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 

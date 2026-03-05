@@ -1,0 +1,25 @@
+[
+    {
+        "name": "Allegra pc Space",
+        "raw_text": "Tab Allegra 120mg pc for 2 weeks",
+        "expected": {
+            "drug_name": "Allegra",
+            "strength": "120 mg",
+            "dose_form": "tablet",
+            "frequency_per_day": 1,
+            "timing": "after_meal",
+            "duration_days": 14
+        }
+    },
+    {
+        "name": "Cap. Amox",
+        "raw_text": "Cap. Amoxicillin 500mg TDS for 1 month",
+        "expected": {
+            "drug_name": "Amoxicillin",
+            "strength": "500 mg",
+            "dose_form": "capsule",
+            "frequency_per_day": 3,
+            "duration_days": 30
+        }
+    }
+]
