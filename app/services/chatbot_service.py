@@ -1,37 +1,62 @@
 # app/services/chatbot_service.py
 from __future__ import annotations
-
+from pathlib import Path
 from app.core.config import settings
-
 
 class ChatbotService:
     def __init__(self):
-        # ✅ Do NOT load any HF/transformers models at startup
-        # self._load_emotion_model()   # ❌ COMMENTED to prevent HFValidationError
-        pass
+        self.pipeline = None
+        self._load_emotion_model()  # ✅ ENABLE MODEL LOADING
 
-    # --------------------------------------------------
-    # ❌ EMOTION MODEL LOADING DISABLED COMPLETELY
-    # --------------------------------------------------
-    # def _load_emotion_model(self):
-    #     from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
-    #     path = settings.EMOTION_MODEL_DIR
-    #
-    #     # ❌ THESE LINES CAUSED YOUR ERROR (Windows path treated as HF repo id):
-    #     # tokenizer = AutoTokenizer.from_pretrained(path)
-    #     # model = AutoModelForSequenceClassification.from_pretrained(path)
-    #
-    #     # self.pipeline = pipeline("text-classification", model=model, tokenizer=tokenizer, top_k=1)
+    def _load_emotion_model(self):
+        try:
+            from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+        except Exception as e:
+            print("❌ transformers import failed:", e)
+            self.pipeline = None
+            return
 
-    # --------------------------------------------------
-    # ✅ SAFE FALLBACK EMOTION
-    # --------------------------------------------------
+        model_dir = Path(settings.EMOTION_MODEL_DIR).resolve()
+        print("🔎 Emotion model dir:", model_dir)
+
+        if not model_dir.exists():
+            print(f"❌ Emotion model directory not found: {model_dir}")
+            self.pipeline = None
+            return
+
+        try:
+            # ✅ local_files_only prevents HF repo-id confusion
+            tokenizer = AutoTokenizer.from_pretrained(str(model_dir), local_files_only=True)
+            model = AutoModelForSequenceClassification.from_pretrained(str(model_dir), local_files_only=True)
+
+            self.pipeline = pipeline(
+                "text-classification",
+                model=model,
+                tokenizer=tokenizer,
+                top_k=1,
+            )
+            print("✅ Emotion model loaded successfully!")
+        except Exception as e:
+            print("❌ Failed to load emotion model:", e)
+            self.pipeline = None
+
     def predict_emotion(self, text: str) -> str:
-        return "neutral"
+        if not text or not text.strip():
+            return "neutral"
 
-    # --------------------------------------------------
-    # ✅ DIALOGFLOW OPTIONAL (won't crash if missing)
-    # --------------------------------------------------
+        if self.pipeline is None:
+            return "neutral"
+
+        try:
+            out = self.pipeline(text)
+            # usually: [[{'label': 'happy', 'score': 0.98}]]
+            label = out[0][0]["label"]
+            return str(label).lower()
+        except Exception as e:
+            print("❌ Emotion prediction failed:", e)
+            return "neutral"
+
+    # --- dialogflow same as yours ---
     def dialogflow_detect_intent(self, text: str, session_id: str) -> dict:
         try:
             from google.cloud import dialogflow_v2 as dialogflow
@@ -40,12 +65,10 @@ class ChatbotService:
 
         try:
             client = dialogflow.SessionsClient()
-
             project_id = settings.DIALOGFLOW_PROJECT_ID
             language_code = getattr(settings, "DIALOGFLOW_LANGUAGE_CODE", "en")
 
             session = client.session_path(project_id, session_id)
-
             text_input = dialogflow.TextInput(text=text, language_code=language_code)
             query_input = dialogflow.QueryInput(text=text_input)
 
@@ -62,14 +85,10 @@ class ChatbotService:
         except Exception:
             return {"intent": None, "reply": ""}
 
-    # --------------------------------------------------
-    # ✅ MAIN CHAT
-    # --------------------------------------------------
     def chat(self, message: str, session_id: str):
         emotion = self.predict_emotion(message)
         df = self.dialogflow_detect_intent(message, session_id)
 
         reply = df.get("reply") or "Would you like to tell me more?"
         intent = df.get("intent")
-
         return reply, emotion, intent

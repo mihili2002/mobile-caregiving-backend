@@ -42,3 +42,5 @@ special_tokens_map.json
 vocab.txt
 config.json
 model.safetensors
+
+keys\dialogflow.json
