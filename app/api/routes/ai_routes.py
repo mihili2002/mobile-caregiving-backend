@@ -346,7 +346,8 @@ async def process_voice_command(req: VoiceCommandRequest):
                     
                     new_task = {
                         "id": task_id, "task_name": task_name, "time": time_str, "type": "common",
-                        "completed": False, "completedAt": None, "scheduledAt": scheduled_at, "graceMinutes": 30
+                        "status": "scheduled", "completed": False, "completedAt": None, 
+                        "scheduledAt": scheduled_at, "graceMinutes": 30
                     }
                     
                     doc = doc_ref.get()

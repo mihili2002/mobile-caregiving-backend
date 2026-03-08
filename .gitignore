@@ -1,46 +1,74 @@
+# ----------------------
 # Python
+# ----------------------
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
 env/
 venv/
 ENV/
 .venv/
 
+# ----------------------
 # VS Code
+# ----------------------
 .vscode/
 
+# ----------------------
 # Environment files
+# ----------------------
 .env
 secrets/
 
-# Trained models and ML artifacts
+# ----------------------
+# Trained models / ML artifacts
+# ----------------------
 ml/trained_models/
+ml/**/trained/*.pkl
 *.joblib
 *.model
 *.pkl
+best_emotion_model.pt
 
-# Firebase keys
-**/firebase-service-account*.json
-firebase_key.json
-
-# OS files
-.DS_Store
-Thumbs.db
-
-keys/firebase_key.json
-
-app/core/firebase_key.json
-
-ml/**/trained/*.pkl
-
-
-# Tokenizers / configs (if generated)
+# ----------------------
+# Tokenizers / model configs
+# ----------------------
 tokenizer_config.json
+tokenizer.json
 special_tokens_map.json
 vocab.txt
 config.json
 model.safetensors
+emotion_labels.json
 
-keys\dialogflow.json
+# ----------------------
+# Firebase / Dialogflow keys
+# ----------------------
+**/firebase-service-account*.json
+firebase_key.json
+keys/firebase_key.json
+app/core/firebase_key.json
+keys/dialogflow.json
+dialogflow.json
+firebase.json
+
+# ----------------------
+# Dataset / training files
+# ----------------------
+crema_d_wav/
+crema_d_wav/train/
+data/
+
+# ----------------------
+# Uploads / logs
+# ----------------------
+uploads/
+journals/
+
+# ----------------------
+# OS files
+# ----------------------
+.DS_Store
+Thumbs.db
