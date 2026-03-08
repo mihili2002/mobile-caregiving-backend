@@ -6,6 +6,19 @@ import mimetypes
 import re
 
 from dotenv import load_dotenv
+
+# =========================================================
+# ✅ LOAD ENV (AS EARLY AS POSSIBLE)
+# =========================================================
+BASE_DIR = Path(__file__).resolve().parent          # .../app
+PROJECT_ROOT = BASE_DIR.parent                      # repo root (contains /ml, .env, etc.)
+DOTENV_PATH = PROJECT_ROOT / ".env"
+
+if DOTENV_PATH.exists():
+    load_dotenv(dotenv_path=str(DOTENV_PATH), override=True)
+else:
+    print(f"⚠️ WARNING: .env not found at: {DOTENV_PATH}")
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
@@ -23,6 +36,7 @@ from app.api.routes import (
     schedule_routes,
     behavior_routes,
     medication_routes,
+    audio_routes,
 )
 from app.api.routes.elder import (
     health_submissions,
@@ -249,35 +263,68 @@ async def get_daily_suggestions(uid: str):
         if not doc.exists:
             raise HTTPException(status_code=404, detail="Profile not found")
 
+        # B. COMMON SECTION & MEAL DETECTION
+        from google.cloud.firestore import FieldFilter
         common_ref = (
             db.collection("common_routine_templates")
-            .where("uid", "in", [uid, "GLOBAL"])
+            .where(filter=FieldFilter("uid", "in", [uid, "GLOBAL"]))
             .stream()
         )
 
-        common_tasks = []
+        tasks_by_name = {}
         meal_schedule = {"breakfast": "08:00", "lunch": "13:00", "dinner": "20:00"}
 
         for c in common_ref:
             c_data = c.to_dict() or {}
             t_str = c_data.get("time_string") or c_data.get("default_time") or "08:00"
-            name = (c_data.get("task_name", "") or "").lower()
+            raw_name = (c_data.get("task_name") or "").strip()
+            name_lower = raw_name.lower()
+            is_global = c_data.get("uid") == "GLOBAL"
 
-            if "breakfast" in name:
+            # Meal detection
+            if "breakfast" in name_lower:
                 meal_schedule["breakfast"] = t_str
-            elif "lunch" in name:
+            elif "lunch" in name_lower:
                 meal_schedule["lunch"] = t_str
-            elif "dinner" in name:
+            elif "dinner" in name_lower:
                 meal_schedule["dinner"] = t_str
 
-            common_tasks.append(
-                {
-                    "task_name": c_data.get("task_name"),
+            # Deduplication: prefer specific (user) templates over GLOBAL ones
+            if name_lower not in tasks_by_name or not is_global:
+                tasks_by_name[name_lower] = {
+                    "task_name": raw_name,
                     "default_time": t_str,
                     "type": "common",
                     "id": c.id,
                 }
-            )
+
+        # B.2 FETCH TODAY'S ACTUAL SCHEDULE (Including voice one-offs)
+        from app.services.time_utils import get_schedule_doc_id
+        # Fallback to server time as get_daily_suggestions doesn't have local_time yet
+        today_date = datetime.now().strftime("%Y-%m-%d")
+        doc_id = get_schedule_doc_id(uid, today_date)
+        schedule_doc = db.collection("schedules").document(doc_id).get()
+
+        if schedule_doc.exists:
+            s_tasks = schedule_doc.to_dict().get("tasks", [])
+            for st in s_tasks:
+                st_name = (st.get("task_name") or st.get("taskName") or "").strip()
+                st_time = (st.get("time") or st.get("Time") or "08:00").strip()
+                st_type = st.get("type", "common")
+                
+                name_l = st_name.lower()
+                # If it's a common task AND not already in suggestions from templates
+                if name_l not in tasks_by_name and st_type == "common":
+                     tasks_by_name[name_l] = {
+                        "task_name": st_name,
+                        "default_time": st_time,
+                        "type": "common",
+                        "status": st.get("status", "scheduled"),
+                        "id": st.get("id") or st.get("taskId"),
+                    }
+
+        common_tasks = list(tasks_by_name.values())
+        common_tasks.sort(key=lambda x: x["default_time"])
 
         therapy_ref = (
             db.collection("therapy_assignments")
@@ -409,4 +456,5 @@ app.include_router(ai_routes.router)
 app.include_router(schedule_routes.router)
 app.include_router(behavior_routes.router)
 app.include_router(medication_routes.router)
+app.include_router(audio_routes.router)
 app.include_router(therapy_router)

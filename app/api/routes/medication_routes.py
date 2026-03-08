@@ -103,6 +103,11 @@ async def fix_permissions(req: FixPermissionsRequest):
         db.collection('patient_medications').document(req.elder_id).set({
             'caregiverId': req.caregiver_id
         }, merge=True)
+
+        # Also heal elder_profiles document (Crucial for frontend access)
+        db.collection('elder_profiles').document(req.elder_id).set({
+            'caregiverId': req.caregiver_id
+        }, merge=True)
         
         return {"message": "Permissions fixed successfully"}
         

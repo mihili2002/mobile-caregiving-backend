@@ -79,12 +79,17 @@ def get_food_recommendations(
     # -------------------------------------------------
     # Patient attributes
     # -------------------------------------------------
-    disease = str(patient.get("Chronic_Disease", "")).lower()
-    dietary = str(patient.get("Dietary_Habits", "")).lower()
-    meal_plan = str(targets.get("Recommended_Meal_Plan", "")).lower()
+    disease = " ".join(patient.get("chronic_conditions", [])).lower()
+    dietary = str(patient.get("dietary_habit", "")).lower()
 
-    allergies = parse_list(patient.get("Allergies", ""))
-    aversions = parse_list(patient.get("Food_Aversions", ""))
+    meal_plan = targets.get("Recommended_Meal_Plan")
+    if meal_plan is None:
+      meal_plan = ""
+    meal_plan = str(meal_plan).lower()
+
+    allergies = parse_list(patient.get("food_allergies", ""))
+    aversions = parse_list(patient.get("food_aversions", ""))
+
 
     # -------------------------------------------------
     # A) Dietary filters (SOFT)
@@ -163,12 +168,10 @@ def get_food_recommendations(
     )
 
     # -------------------------------------------------
-    # F) DIVERSITY SELECTION (KEY FIX)
+    # F) DIVERSITY SELECTION
     # -------------------------------------------------
-    # Keep best 80 foods
     candidate_pool = df.sort_values("score").head(80)
 
-    # Randomly sample from good foods
     if len(candidate_pool) > max_items:
         candidate_pool = candidate_pool.sample(
             n=max_items,
@@ -187,6 +190,9 @@ def get_food_recommendations(
         "Fat (g)",
         "score",
     ]
+
     keep_cols = [c for c in keep_cols if c in candidate_pool.columns]
+
+    print("FOOD FILTER RESULT COUNT:", len(candidate_pool))
 
     return candidate_pool[keep_cols].to_dict(orient="records")
