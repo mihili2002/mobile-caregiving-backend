@@ -1,8 +1,14 @@
-from pydantic_settings import BaseSettings , SettingsConfigDict
+"""Application configuration.
+
+Reads environment variables for service configuration.
+"""
+
 from pathlib import Path
-# from pydantic import BaseSettings
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
     project_name: str = "mobile-caregiving-backend"
@@ -10,13 +16,12 @@ class Settings(BaseSettings):
     firebase_credentials: str | None = None
     firestore_emulator_host: str | None = None
 
-    EMOTION_MODEL_DIR: str = str(BASE_DIR / "ml" / "member2_chatbot" / "models" / "emotion_model")
+    EMOTION_MODEL_DIR: str = str(
+        BASE_DIR / "ml" / "member2_chatbot" / "models" / "emotion_model"
+    )
 
-    # ✅ Add these:
     DIALOGFLOW_PROJECT_ID: str = "elderly-voice-bot-xvja"
     DIALOGFLOW_LANGUAGE_CODE: str = "en"
-
-    
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -24,14 +29,5 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+
 settings = Settings()
-"""Application configuration.
-
-Reads environment variables for service configuration.
-"""
-
-
-
-
-
-
