@@ -283,6 +283,29 @@ def emotions(
     return {"elder_uid": target_uid, "items": items}
 
 
+@router.get("/history/{uid}")
+def get_chat_history(
+    uid: str,
+    days: int = Query(0, ge=0),
+    authorization: str | None = Header(default=None),
+):
+    """
+    Returns full chat history for a user (across all sessions) or filtered by days.
+    Matches the expectation of the mood_summary.py/Flutter frontend.
+    """
+    _uid_from_auth_header(authorization) # Verify auth
+    
+    # We use the list_emotions_for_user logic but without the emotion filter 
+    # if we want full history, or we can just reuse it if the frontend only cares about emotions.
+    # Looking at mood_summary.dart: it says "EMOTION HISTORY" and "messages" list.
+    # It filters for messages WITH emotion in the dart code too.
+    
+    from app.services.firestore_chat_store import list_emotions_for_user
+    messages = list_emotions_for_user(uid=uid, days=days, limit=100)
+    
+    return {"messages": messages}
+
+
 def filter_journals_by_date_keyword(question_text: str, journals: list):
     question = (question_text or "").lower()
     now = datetime.now(timezone.utc)

@@ -1,0 +1,108 @@
+[2026-03-08 13:14:07]
+User: good morning
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-08 13:14:24]
+User: good morning
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-08 13:16:04]
+User: good morning
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-08 21:01:32]
+User: I feel so happy today
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-08 21:47:55]
+User: hello I feel so happy today
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-08 21:55:57]
+User: I feel so happy today
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-08 21:56:20]
+User: I feel so happy today
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-08 22:04:55]
+User: i feel so happy today because i got a new pet parrot
+Bot: That’s wonderful to hear! 😊 What made you feel so happy today?
+Emotion: neutral
+Intent: mood_happy
+
+[2026-03-08 22:05:28]
+User: im soo happy
+Bot: That’s wonderful to hear! 😊 What made you feel so happy today?
+Emotion: neutral
+Intent: mood_happy
+
+[2026-03-08 22:07:23]
+User: i feel so sad now
+Bot: That sounds difficult. I am here with you. What has been on your mind today?
+Emotion: neutral
+Intent: mood_sad_1
+
+[2026-03-08 22:07:43]
+User: i am heartbroken
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-08 22:14:01]
+User: good morning
+Bot: Good morning  How are you feeling today?
+Emotion: neutral
+Intent: SmallTalk.Greeting
+
+[2026-03-08 22:14:11]
+User: i am good
+Bot: I’m glad to hear that. What would you like to do today?
+Emotion: neutral
+Intent: User-Feeling-good
+
+[2026-03-08 22:14:56]
+User: i feel sad
+Bot: I am sorry you are feeling this way. Would you like to tell me what is troubling you?
+Emotion: neutral
+Intent: mood_sad_1
+
+[2026-03-08 22:15:14]
+User: i am not well today
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-08 23:29:18]
+User: good morning 
+Bot: Good morning  How are you feeling today?
+Emotion: neutral
+Intent: SmallTalk.Greeting
+
+[2026-03-08 23:29:44]
+User: main
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-08 23:30:01]
+User: i feel sad today
+Bot: I am sorry you are feeling this way. Would you like to tell me what is troubling you?
+Emotion: neutral
+Intent: mood_sad_1
+
