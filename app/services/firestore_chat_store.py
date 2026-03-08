@@ -3,6 +3,21 @@ from firebase_admin import firestore
 from google.cloud import firestore as gcf  # for Query constants
 
 
+def _ts_to_iso(ts):
+    if ts is None:
+        return None
+    try:
+        if hasattr(ts, "datetime"):
+            return (
+                ts.datetime.replace(tzinfo=timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z")
+            )
+    except Exception:
+        pass
+    return None
+
+
 def save_message_for_user(
     uid: str,
     session_id: str,
@@ -20,14 +35,19 @@ def save_message_for_user(
         .document(session_id)
     )
 
-    # Ensure session doc exists / update timestamps + summary fields
+    # Set createdAt only when session does not already exist
+    session_doc = session_ref.get()
+
     session_payload = {
         "session_id": session_id,
         "updatedAt": firestore.SERVER_TIMESTAMP,
-        "createdAt": firestore.SERVER_TIMESTAMP,  # merge keeps first create
         "lastMessage": (text or ""),
         "lastSender": sender,
     }
+
+    if not session_doc.exists:
+        session_payload["createdAt"] = firestore.SERVER_TIMESTAMP
+
     if emotion is not None:
         session_payload["lastEmotion"] = emotion
     if intent is not None:
@@ -35,7 +55,7 @@ def save_message_for_user(
 
     session_ref.set(session_payload, merge=True)
 
-    # Store message
+    # Store message inside subcollection
     msg_ref = session_ref.collection("messages").document()
     payload = {
         "sender": sender,
@@ -44,6 +64,7 @@ def save_message_for_user(
         "createdAt": firestore.SERVER_TIMESTAMP,
         "displayTime": datetime.now(timezone.utc).isoformat(),
     }
+
     if emotion is not None:
         payload["emotion"] = emotion
     if intent is not None:
@@ -72,30 +93,8 @@ def list_sessions_for_user(uid: str, limit: int = 50):
     for doc in q:
         d = doc.to_dict() or {}
 
-        # Firestore timestamp -> ISO
-        updated_iso = None
-        ts = d.get("updatedAt")
-        try:
-            if ts is not None and hasattr(ts, "datetime"):
-                updated_iso = (
-                    ts.datetime.replace(tzinfo=timezone.utc)
-                    .isoformat()
-                    .replace("+00:00", "Z")
-                )
-        except Exception:
-            updated_iso = None
-
-        created_iso = None
-        cts = d.get("createdAt")
-        try:
-            if cts is not None and hasattr(cts, "datetime"):
-                created_iso = (
-                    cts.datetime.replace(tzinfo=timezone.utc)
-                    .isoformat()
-                    .replace("+00:00", "Z")
-                )
-        except Exception:
-            created_iso = None
+        updated_iso = _ts_to_iso(d.get("updatedAt"))
+        created_iso = _ts_to_iso(d.get("createdAt"))
 
         items.append(
             {
@@ -106,6 +105,53 @@ def list_sessions_for_user(uid: str, limit: int = 50):
                 "lastSender": d.get("lastSender") or "",
                 "lastEmotion": d.get("lastEmotion"),
                 "lastIntent": d.get("lastIntent"),
+            }
+        )
+
+    return items
+
+
+def list_session_messages_for_user(uid: str, session_id: str, limit: int = 500):
+    """
+    Returns messages for a single session in ascending time order.
+    Returns None if session does not exist.
+    """
+    db = firestore.client()
+
+    session_ref = (
+        db.collection("users")
+        .document(uid)
+        .collection("chat_sessions")
+        .document(session_id)
+    )
+
+    session_doc = session_ref.get()
+    if not session_doc.exists:
+        return None
+
+    q = (
+        session_ref.collection("messages")
+        .order_by("createdAt", direction=gcf.Query.ASCENDING)
+        .limit(limit)
+        .stream()
+    )
+
+    items: list[dict] = []
+    for doc in q:
+        d = doc.to_dict() or {}
+
+        created_iso = _ts_to_iso(d.get("createdAt")) or d.get("displayTime")
+
+        items.append(
+            {
+                "message_id": doc.id,
+                "sender": d.get("sender") or "",
+                "text": d.get("text") or "",
+                "preview": d.get("preview") or "",
+                "emotion": d.get("emotion"),
+                "intent": d.get("intent"),
+                "createdAtIso": created_iso,
+                "displayTime": d.get("displayTime"),
             }
         )
 
@@ -132,26 +178,27 @@ def list_emotions_for_user(uid: str, days: int = 7, limit: int = 500):
     for sdoc in sessions_q:
         sref = sdoc.reference
         mq = sref.collection("messages")
+
         if since is not None:
             mq = mq.where("createdAt", ">=", since)
+
         mq = mq.order_by("createdAt", direction=gcf.Query.DESCENDING).limit(limit)
 
         for mdoc in mq.stream():
             d = mdoc.to_dict() or {}
 
-            # only keep those that actually have emotion (usually bot messages)
-            if d.get("emotion"):
-                ts = d.get("createdAt")
-                created_iso = None
-                if ts is not None and hasattr(ts, "datetime"):
-                    created_iso = ts.datetime.replace(tzinfo=timezone.utc).isoformat()
+            sender = (d.get("sender") or "").lower()
+
+            # ✅ only elder/user messages with emotion
+            if sender == "user" and d.get("emotion"):
+                created_iso = _ts_to_iso(d.get("createdAt")) or d.get("displayTime")
 
                 items.append(
                     {
                         "session_id": sdoc.id,
                         "emotion": d.get("emotion"),
                         "text": d.get("text", ""),
-                        "sender": d.get("sender"),
+                        "sender": sender,
                         "createdAtIso": created_iso,
                     }
                 )
@@ -160,7 +207,6 @@ def list_emotions_for_user(uid: str, days: int = 7, limit: int = 500):
                 return items
 
     return items
-
 
 def delete_session_for_user(uid: str, session_id: str) -> bool:
     db = firestore.client()
@@ -176,7 +222,7 @@ def delete_session_for_user(uid: str, session_id: str) -> bool:
     if not doc.exists:
         return False
 
-    # Delete subcollection messages
+    # Delete all messages in subcollection
     for msg in session_ref.collection("messages").stream():
         msg.reference.delete()
 

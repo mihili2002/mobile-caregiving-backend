@@ -1,0 +1,78 @@
+[2026-03-06 22:17:05]
+User: good morning
+Bot: Good morning  How are you feeling today?
+Emotion: joy
+Intent: SmallTalk.Greeting
+
+[2026-03-06 22:17:24]
+User: i feel sad
+Bot: That sounds difficult. I am here with you. What has been on your mind today?
+Emotion: sadness
+Intent: mood_sad_1
+
+[2026-03-07 01:48:33]
+User: good morning
+Bot: Good morning  How are you feeling today?
+Emotion: joy
+Intent: SmallTalk.Greeting
+
+[2026-03-07 12:03:33]
+User: hi
+Bot: Would you like to tell me more?
+Emotion: joy
+Intent: none
+
+[2026-03-07 12:03:48]
+User: good morning
+Bot: Good morning  How are you feeling today?
+Emotion: joy
+Intent: SmallTalk.Greeting
+
+[2026-03-07 12:05:12]
+User: i feel sad
+Bot: I am sorry you are feeling this way. Would you like to tell me what is troubling you?
+Emotion: sadness
+Intent: mood_sad_1
+
+[2026-03-08 14:16:10]
+User: good morning
+Bot: Would you like to tell me more?
+Emotion: joy
+Intent: none
+
+[2026-03-08 14:16:43]
+User: i feel sad
+Bot: Would you like to tell me more?
+Emotion: sadness
+Intent: none
+
+[2026-03-08 14:22:04]
+User: i feel happy
+Bot: That’s wonderful to hear! 😊 What made you feel so happy today?
+Emotion: joy
+Intent: mood_happy
+
+[2026-03-08 14:22:28]
+User: good morning
+Bot: Would you like to tell me more?
+Emotion: joy
+Intent: none
+
+[2026-03-08 14:22:49]
+User: i feel sad
+Bot: That sounds difficult. I am here with you. What has been on your mind today?
+Emotion: sadness
+Intent: mood_sad_1
+
+[2026-03-08 22:58:45]
+User: good morning
+Bot: Would you like to tell me more?
+Emotion: joy
+Intent: none
+
+[2026-03-08 22:58:59]
+User: i feel happy
+Bot: That’s wonderful to hear! 😊 What made you feel so happy today?
+Emotion: joy
+Intent: mood_happy
+
