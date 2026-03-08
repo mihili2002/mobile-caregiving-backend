@@ -28,10 +28,11 @@ async def list_patients(user=Depends(get_current_user)):
     role = user.get("role") or user.get("roles")
     coll = firebase.db.collection("patients")
 
+    from google.cloud.firestore import FieldFilter
     if role == "doctor" or (isinstance(role, list) and "doctor" in role):
         docs = coll.stream()
     else:
-        docs = coll.where("created_by", "==", user["uid"]).stream()
+        docs = coll.where(filter=FieldFilter("created_by", "==", user["uid"])).stream()
 
     return {
         "items": [

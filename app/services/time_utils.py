@@ -78,23 +78,17 @@ def extract_time_range(text: str):
 def get_schedule_doc_id(uid, date_val):
     """
     Standardizes how we generate Firestore document IDs for schedules.
-    Accepts:
-        - date_val as string "YYYY-MM-DD"
-        - date_val as string "DD.MM.YYYY"
-        - date_val as datetime object
-    Returns: "uid_DD.MM.YYYY"
+    Format: uid_YYYY-MM-DD
     """
     try:
         if isinstance(date_val, datetime):
-            date_str = date_val.strftime("%d.%m.%Y")
-        elif "-" in date_val: # YYYY-MM-DD
-            dt = datetime.strptime(date_val, "%Y-%m-%d")
-            date_str = dt.strftime("%d.%m.%Y")
-        elif "." in date_val: # DD.MM.YYYY
-            date_str = date_val
+            date_str = date_val.strftime("%Y-%m-%d")
+        elif "." in date_val: # Convert DD.MM.YYYY to YYYY-MM-DD
+            parts = date_val.split('.')
+            date_str = f"{parts[2]}-{parts[1]}-{parts[0]}"
         else:
-            # Fallback
-            date_str = date_val
+            # Assume YYYY-MM-DD or already correct
+            date_str = str(date_val)
             
         return f"{uid}_{date_str}"
     except:
@@ -108,3 +102,19 @@ def is_last_time_query(text: str) -> bool:
     text = text.lower()
     triggers = ["last time", "when did i last", "most recent", "latest"]
     return any(t in text for t in triggers)
+
+def combine_date_time(date_str: str, time_str: str) -> str:
+    """
+    Combines a date string (YYYY-MM-DD) and a time string (HH:MM or H:MM)
+    into an ISO 8601 timestamp (YYYY-MM-DDTHH:MM:00).
+    """
+    try:
+        # Normalize time_str if it's H:MM
+        if len(time_str.split(':')[0]) == 1:
+            time_str = "0" + time_str
+            
+        # Basic validation/formatting to ensure it's HH:MM
+        return f"{date_str}T{time_str}:00"
+    except Exception:
+        # Fallback to now if something goes wrong, though should be rare
+        return datetime.now().isoformat()
