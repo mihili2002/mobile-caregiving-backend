@@ -20,6 +20,7 @@ from app.services.firestore_chat_store import (
     list_emotions_for_user,
     list_sessions_for_user,  # ✅ NEW
     delete_session_for_user, 
+     list_session_messages_for_user,
 )
 
 
@@ -129,6 +130,20 @@ class ChatSessionListResponse(BaseModel):
 class ChatSessionDeleteResponse(BaseModel):
     session_id: str
     deleted: bool
+
+class ChatMessageItem(BaseModel):
+    message_id: str
+    sender: str
+    text: str
+    emotion: str | None = None
+    intent: str | None = None
+    createdAtIso: str | None = None
+    displayTime: str | None = None
+
+
+class ChatHistoryResponse(BaseModel):
+    session_id: str
+    items: list[ChatMessageItem]
 
 # =========================================================
 # Helpers
@@ -250,12 +265,37 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
     session_id = req.session_id or str(uuid.uuid4())
     svc = request.app.state.chatbot_service
 
-    save_message_for_user(uid, session_id, "user", req.message)
-    reply, emotion, intent = svc.chat(req.message, session_id)
-    save_message_for_user(uid, session_id, "bot", reply, emotion, intent)
-    append_to_history(session_id, req.message, reply, emotion, intent)
+    # ✅ predict elder emotion from elder message
+    reply, user_emotion, intent = svc.chat(req.message, session_id)
 
-    return ChatResponse(reply=reply, emotion=emotion, intent=intent, session_id=session_id)
+    # ✅ save elder message WITH emotion
+    save_message_for_user(
+        uid,
+        session_id,
+        "user",
+        req.message,
+        user_emotion,
+        None,
+    )
+
+    # ✅ save bot reply WITHOUT emotion, or keep intent if you want
+    save_message_for_user(
+        uid,
+        session_id,
+        "bot",
+        reply,
+        None,
+        intent,
+    )
+
+    append_to_history(session_id, req.message, reply, user_emotion, intent)
+
+    return ChatResponse(
+        reply=reply,
+        emotion=user_emotion,
+        intent=intent,
+        session_id=session_id,
+    )
 
 
 @router.get("/sessions", response_model=ChatSessionListResponse)
@@ -765,3 +805,18 @@ def delete_chat_session(
         session_id=session_id,
         deleted=True,
     )
+
+
+@router.get("/sessions/{session_id}/messages", response_model=ChatHistoryResponse)
+def get_chat_session_messages(
+    session_id: str,
+    limit: int = Query(500, ge=1, le=2000),
+    authorization: str | None = Header(default=None),
+):
+    uid = _uid_from_auth_header(authorization)
+
+    items = list_session_messages_for_user(uid=uid, session_id=session_id, limit=limit)
+    if items is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return ChatHistoryResponse(session_id=session_id, items=items)
