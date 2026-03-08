@@ -298,6 +298,31 @@ async def get_daily_suggestions(uid: str):
                     "id": c.id,
                 }
 
+        # B.2 FETCH TODAY'S ACTUAL SCHEDULE (Including voice one-offs)
+        from app.services.time_utils import get_schedule_doc_id
+        # Fallback to server time as get_daily_suggestions doesn't have local_time yet
+        today_date = datetime.now().strftime("%Y-%m-%d")
+        doc_id = get_schedule_doc_id(uid, today_date)
+        schedule_doc = db.collection("schedules").document(doc_id).get()
+
+        if schedule_doc.exists:
+            s_tasks = schedule_doc.to_dict().get("tasks", [])
+            for st in s_tasks:
+                st_name = (st.get("task_name") or st.get("taskName") or "").strip()
+                st_time = (st.get("time") or st.get("Time") or "08:00").strip()
+                st_type = st.get("type", "common")
+                
+                name_l = st_name.lower()
+                # If it's a common task AND not already in suggestions from templates
+                if name_l not in tasks_by_name and st_type == "common":
+                     tasks_by_name[name_l] = {
+                        "task_name": st_name,
+                        "default_time": st_time,
+                        "type": "common",
+                        "status": st.get("status", "scheduled"),
+                        "id": st.get("id") or st.get("taskId"),
+                    }
+
         common_tasks = list(tasks_by_name.values())
         common_tasks.sort(key=lambda x: x["default_time"])
 

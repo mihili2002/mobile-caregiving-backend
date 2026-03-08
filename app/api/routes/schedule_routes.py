@@ -118,6 +118,7 @@ async def add_task_to_schedule(req: AddTaskRequest):
             "task_name": task_data.get('task_name'),
             "time": task_data.get('time'),
             "type": task_data.get('type', 'common'),
+            "status": "scheduled",
             "completed": task_data.get('completed', False),
             "completedAt": task_data.get('completedAt') or None,
             "scheduledAt": task_data.get('scheduledAt'), 
