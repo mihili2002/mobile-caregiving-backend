@@ -199,7 +199,7 @@ def startup():
     try:
         if not (PROJECT_ROOT / "ml").exists():
             print(f"⚠️ WARNING: /ml folder not found at {PROJECT_ROOT}.")
- 
+    
 
         from app.services import ml_inference, load_models
 
