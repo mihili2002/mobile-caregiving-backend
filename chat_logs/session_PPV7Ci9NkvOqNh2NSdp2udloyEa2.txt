@@ -76,3 +76,27 @@ Bot: That’s wonderful to hear! 😊 What made you feel so happy today?
 Emotion: joy
 Intent: mood_happy
 
+[2026-03-09 11:49:37]
+User: good morning
+Bot: Good morning  How are you feeling today?
+Emotion: neutral
+Intent: SmallTalk.Greeting
+
+[2026-03-09 11:50:00]
+User: i feel happy today
+Bot: That’s wonderful to hear! 😊 What made you feel so happy today?
+Emotion: neutral
+Intent: mood_happy
+
+[2026-03-09 11:50:28]
+User: i feel sad
+Bot: You are not alone. Would you like to talk about your day?
+Emotion: neutral
+Intent: Elder.LonelyFeeling_1
+
+[2026-03-09 11:51:23]
+User: i feel depressed
+Bot: You are not alone. Would you like to talk about your day?
+Emotion: neutral
+Intent: Elder.LonelyFeeling_1
+
