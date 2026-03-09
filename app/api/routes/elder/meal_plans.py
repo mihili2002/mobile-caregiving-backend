@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 
 from app.api.deps import require_role
 from app.core.firebase import get_db
-
+from google.cloud.firestore_v1.base_query import FieldFilter
 router = APIRouter(prefix="/elder/meal-plans", tags=["elder_meal_plans"])
 
 
