@@ -39,7 +39,7 @@ class ElderHealthSubmissionIn(BaseModel):
     dietary_habit: Literal["Vegetarian", "Vegan", "Non-Vegetarian"]
     food_allergies: Optional[str] = None
     preferred_cuisine: Optional[
-        Literal["Indian", "Chinese", "Mediterranean", "Continental", "Mixed"]
+        Literal["Sri Lankan", "Indian", "Mediterranean", "Continental", "Mixed"]
     ] = None
     food_aversions: Optional[str] = None
     caloric_intake: Optional[float] = None

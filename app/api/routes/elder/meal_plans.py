@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 from app.api.deps import require_role
 from app.core.firebase import get_db

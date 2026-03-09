@@ -1,12 +1,12 @@
-# app/services/chatbot_service.py
 from __future__ import annotations
 from pathlib import Path
 from app.core.config import settings
 
+
 class ChatbotService:
     def __init__(self):
         self.pipeline = None
-        self._load_emotion_model()  # ✅ ENABLE MODEL LOADING
+        self._load_emotion_model()
 
     def _load_emotion_model(self):
         try:
@@ -25,9 +25,14 @@ class ChatbotService:
             return
 
         try:
-            # ✅ local_files_only prevents HF repo-id confusion
-            tokenizer = AutoTokenizer.from_pretrained(str(model_dir), local_files_only=True)
-            model = AutoModelForSequenceClassification.from_pretrained(str(model_dir), local_files_only=True)
+            tokenizer = AutoTokenizer.from_pretrained(
+                str(model_dir),
+                local_files_only=True,
+            )
+            model = AutoModelForSequenceClassification.from_pretrained(
+                str(model_dir),
+                local_files_only=True,
+            )
 
             self.pipeline = pipeline(
                 "text-classification",
@@ -49,14 +54,12 @@ class ChatbotService:
 
         try:
             out = self.pipeline(text)
-            # usually: [[{'label': 'happy', 'score': 0.98}]]
             label = out[0][0]["label"]
             return str(label).lower()
         except Exception as e:
             print("❌ Emotion prediction failed:", e)
             return "neutral"
 
-    # --- dialogflow same as yours ---
     def dialogflow_detect_intent(self, text: str, session_id: str) -> dict:
         try:
             from google.cloud import dialogflow_v2 as dialogflow
@@ -86,9 +89,12 @@ class ChatbotService:
             return {"intent": None, "reply": ""}
 
     def chat(self, message: str, session_id: str):
-        emotion = self.predict_emotion(message)
-        df = self.dialogflow_detect_intent(message, session_id)
+        # ✅ emotion of elder/user message
+        user_emotion = self.predict_emotion(message)
 
+        # dialog / bot reply
+        df = self.dialogflow_detect_intent(message, session_id)
         reply = df.get("reply") or "Would you like to tell me more?"
         intent = df.get("intent")
-        return reply, emotion, intent
+
+        return reply, user_emotion, intent
