@@ -106,3 +106,39 @@ Bot: I am sorry you are feeling this way. Would you like to tell me what is trou
 Emotion: neutral
 Intent: mood_sad_1
 
+[2026-03-09 00:46:23]
+User: i feel so sad today
+Bot: That sounds difficult. I am here with you. What has been on your mind today?
+Emotion: neutral
+Intent: mood_sad_1
+
+[2026-03-09 00:46:33]
+User: i feel so happy
+Bot: That’s wonderful to hear! 😊 What made you feel so happy today?
+Emotion: neutral
+Intent: mood_happy
+
+[2026-03-09 00:46:41]
+User: i am depressed
+Bot: That sounds difficult. I am here with you. What has been on your mind today?
+Emotion: neutral
+Intent: mood_sad_1
+
+[2026-03-09 00:46:48]
+User: i am sad
+Bot: Would you like to tell me more?
+Emotion: neutral
+Intent: none
+
+[2026-03-09 00:47:00]
+User: i feel sad
+Bot: That sounds difficult. I am here with you. What has been on your mind today?
+Emotion: neutral
+Intent: mood_sad_1
+
+[2026-03-09 00:47:10]
+User: i feel happy
+Bot: That’s wonderful to hear! 😊 What made you feel so happy today?
+Emotion: neutral
+Intent: mood_happy
+
