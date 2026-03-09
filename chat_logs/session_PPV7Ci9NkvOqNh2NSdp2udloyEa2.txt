@@ -76,3 +76,15 @@ Bot: That’s wonderful to hear! 😊 What made you feel so happy today?
 Emotion: joy
 Intent: mood_happy
 
+[2026-03-09 00:55:10]
+User: good morning
+Bot: Good morning  How are you feeling today?
+Emotion: joy
+Intent: SmallTalk.Greeting
+
+[2026-03-09 00:55:40]
+User: i feel happy
+Bot: That’s wonderful to hear! 😊 What made you feel so happy today?
+Emotion: joy
+Intent: mood_happy
+
