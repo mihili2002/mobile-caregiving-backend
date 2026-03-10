@@ -232,8 +232,8 @@ try:
     from app.workers.aggregator_worker import start_aggregator
 
     # Disabled to prevent Firestore quota exhaustion
-    # threading.Thread(target=start_scheduler, daemon=True).start()
-    # threading.Thread(target=start_aggregator, daemon=True).start()
+    threading.Thread(target=start_scheduler, daemon=True).start()
+    threading.Thread(target=start_aggregator, daemon=True).start()
 
     print("⚠️ Background workers disabled (dev mode).")
 
