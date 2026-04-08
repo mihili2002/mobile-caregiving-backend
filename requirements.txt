@@ -47,3 +47,4 @@ python-dotenv>=0.21.0
 reportlab
 faster-whisper
 google-generativeai
+openai

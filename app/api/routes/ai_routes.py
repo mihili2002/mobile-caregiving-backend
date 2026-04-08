@@ -282,8 +282,8 @@ async def process_audio_command(uid: str = Form(...), session_id: Optional[str] 
     processes the command exactly like the text-based endpoint.
     """
     try:
-        # 1. Read Audio File
-        audio_bytes = await file.read()
+        # 1. Read Audio File (specific FastAPI command that pulls all those 0s and 1s from the network and stores them into a variable called audio_bytes. At this point, the "sound" is now a Python Bytes object.)
+        audio_bytes = await file.read() 
         
         # 2. Transcribe using VoiceProcessingService (includes noise reduction)
         text = voice_processing_service.transcribe(audio_bytes)

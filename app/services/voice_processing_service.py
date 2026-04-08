@@ -8,7 +8,10 @@ OPENAI_WHISPER_URL = "https://api.openai.com/v1/audio/transcriptions"
 class VoiceProcessingService:
     def transcribe(self, audio_bytes: bytes) -> str:
         """
-        Transcribes audio bytes into text using OpenAI Whisper API.
+        Transcribes audio bytes into text using OpenAI Whisper API. 
+        Once you have the bytes, this function takes them and prepares them for the AI.
+        This function "wraps" raw bytes back into a virtual file structure (named audio.wav) 
+        So that the Whisper AI can understand the sample rate and encoding of the sound.
         """
         if not OPENAI_API_KEY:
             return "ERROR: OpenAI API Key missing"
@@ -33,3 +36,22 @@ class VoiceProcessingService:
             return f"ERROR: Transcription failed. {str(e)}"
 
 voice_processing_service = VoiceProcessingService()
+
+
+
+
+
+
+
+
+
+
+# User speaks → microphone records audio
+#         ↓
+# Audio converted to bytes
+#         ↓
+# transcribe(audio_bytes)
+#         ↓
+# Audio sent to OpenAI Whisper
+#         ↓
+# Text returned

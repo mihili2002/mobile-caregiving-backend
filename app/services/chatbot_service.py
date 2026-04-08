@@ -25,14 +25,18 @@ class ChatbotService:
             return
 
         try:
-            tokenizer = AutoTokenizer.from_pretrained(
-                str(model_dir),
-                local_files_only=True,
-            )
-            model = AutoModelForSequenceClassification.from_pretrained(
-                str(model_dir),
-                local_files_only=True,
-            )
+            # ✅ Check for weights before loading to avoid HF errors
+            weights_bin = model_dir / "pytorch_model.bin"
+            weights_safe = model_dir / "model.safetensors"
+            
+            if not (weights_bin.exists() or weights_safe.exists()):
+                print(f"⚠️ Emotion model weights missing in {model_dir}. Prediction will use default 'neutral'.")
+                self.pipeline = None
+                return
+
+            # ✅ local_files_only prevents HF repo-id confusion
+            tokenizer = AutoTokenizer.from_pretrained(str(model_dir), local_files_only=True)
+            model = AutoModelForSequenceClassification.from_pretrained(str(model_dir), local_files_only=True)
 
             self.pipeline = pipeline(
                 "text-classification",
@@ -77,7 +81,7 @@ class ChatbotService:
 
             response = client.detect_intent(
                 request={"session": session, "query_input": query_input},
-                timeout=5.0,
+                timeout=20.0,
             )
 
             result = response.query_result
@@ -85,7 +89,8 @@ class ChatbotService:
                 "intent": result.intent.display_name if result.intent else None,
                 "reply": result.fulfillment_text or "",
             }
-        except Exception:
+        except Exception as e:
+            print(f"❌ Dialogflow Error (Project: {settings.DIALOGFLOW_PROJECT_ID}): {e}")
             return {"intent": None, "reply": ""}
 
     def chat(self, message: str, session_id: str):

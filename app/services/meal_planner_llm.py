@@ -1,4 +1,6 @@
-# app/services/meal_planner_llm.py
+import warnings
+# Suppress the google-generativeai deprecation warning globally in this module
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 import os
 import json

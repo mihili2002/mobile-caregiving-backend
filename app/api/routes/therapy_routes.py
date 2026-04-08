@@ -6,6 +6,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowabl
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
+from urllib.parse import unquote   # ⭐ FIX FOR EMAIL ENCODING
 from app.core.firebase import get_db
 import os
 
@@ -14,9 +15,11 @@ router = APIRouter(prefix="/api/therapy", tags=["Therapy Plans"])
 db = get_db()
 
 # ====================================================
-# 🧠 Intervention Repository (MUST MATCH: Low / Medium / High)
+# Intervention Repository
 # ====================================================
+
 INTERVENTION_LIBRARY = {
+
     "Depression_Risk": {
         "Low": [
             {"activity": "Daily sunlight walk", "duration": "20 mins"},
@@ -33,8 +36,11 @@ INTERVENTION_LIBRARY = {
             {"activity": "Emergency support check-in", "duration": "Immediate"},
         ],
     },
+
     "Anxiety_Risk": {
-        "Low": [{"activity": "4-7-8 breathing", "duration": "5 mins"}],
+        "Low": [
+            {"activity": "4-7-8 breathing", "duration": "5 mins"}
+        ],
         "Medium": [
             {"activity": "Grounding exercise 5-4-3-2-1", "duration": "10 mins"},
             {"activity": "Progressive muscle relaxation", "duration": "10 mins"},
@@ -44,8 +50,11 @@ INTERVENTION_LIBRARY = {
             {"activity": "Daily relaxation training", "duration": "20 mins"},
         ],
     },
+
     "Insomnia_Risk": {
-        "Low": [{"activity": "Sleep hygiene tips", "duration": "Daily habit"}],
+        "Low": [
+            {"activity": "Sleep hygiene tips", "duration": "Daily habit"}
+        ],
         "Medium": [
             {"activity": "No screens 60 mins before bed", "duration": "Daily"},
             {"activity": "Consistent sleep schedule", "duration": "Daily"},
@@ -55,8 +64,11 @@ INTERVENTION_LIBRARY = {
             {"activity": "Sleep diary tracking", "duration": "Daily"},
         ],
     },
+
     "Emotional_WellBeing_Risk": {
-        "Low": [{"activity": "Weekly social interaction goal", "duration": "Weekly"}],
+        "Low": [
+            {"activity": "Weekly social interaction goal", "duration": "Weekly"}
+        ],
         "Medium": [
             {"activity": "Daily mood tracking", "duration": "5 mins"},
             {"activity": "Hobby engagement", "duration": "20 mins"},
@@ -69,12 +81,14 @@ INTERVENTION_LIBRARY = {
 }
 
 # ====================================================
-# 🧠 Generate Personalized Plan
+# Generate Personalized Plan
 # ====================================================
+
 @router.post("/generate_personalized_plan")
 def generate_personalized_plan(payload: dict):
 
     resident_id = payload.get("resident_id")
+    elder_email = payload.get("elder_email")
 
     if not resident_id:
         raise HTTPException(status_code=400, detail="resident_id required")
@@ -88,6 +102,7 @@ def generate_personalized_plan(payload: dict):
     )
 
     latest = None
+
     for doc in risk_docs:
         latest = doc.to_dict()
 
@@ -139,6 +154,7 @@ def generate_personalized_plan(payload: dict):
     plan_data = {
         "id": plan_ref.id,
         "residentId": resident_id,
+        "elderEmail": elder_email,
         "generatedAt": datetime.utcnow().isoformat(),
         "domains": generated_plan,
         "status": "Pending Therapist Approval",
@@ -151,8 +167,9 @@ def generate_personalized_plan(payload: dict):
 
 
 # ====================================================
-# ✅ Approve Plan (Save Edited Version)
+# Approve Plan
 # ====================================================
+
 @router.post("/approve_plan")
 def approve_plan(payload: dict):
 
@@ -164,6 +181,7 @@ def approve_plan(payload: dict):
         raise HTTPException(status_code=400, detail="plan_id required")
 
     plan_ref = db.collection("personalized_plans").document(plan_id)
+
     doc = plan_ref.get()
 
     if not doc.exists:
@@ -185,8 +203,9 @@ def approve_plan(payload: dict):
 
 
 # ====================================================
-# 📄 Export Plan as PDF
+# Export Plan PDF
 # ====================================================
+
 @router.get("/export_plan_pdf/{plan_id}")
 def export_plan_pdf(plan_id: str):
 
@@ -201,13 +220,17 @@ def export_plan_pdf(plan_id: str):
     file_path = f"/tmp/{plan_id}.pdf"
 
     pdf = SimpleDocTemplate(file_path, pagesize=A4)
+
     elements = []
+
     styles = getSampleStyleSheet()
 
     elements.append(Paragraph("Clinical Personalized Therapy Report", styles["Title"]))
     elements.append(Spacer(1, 0.3 * inch))
+
     elements.append(Paragraph(f"Resident ID: {plan['residentId']}", styles["Normal"]))
     elements.append(Paragraph(f"Status: {plan['status']}", styles["Normal"]))
+
     elements.append(Spacer(1, 0.3 * inch))
 
     for domain in plan["domains"]:
@@ -218,12 +241,13 @@ def export_plan_pdf(plan_id: str):
                 styles["Heading2"],
             )
         )
+
         elements.append(Spacer(1, 0.2 * inch))
 
         bullets = []
 
         for item in domain["interventions"]:
-            text = f"{item['activity']} ({item.get('duration', '')})"
+            text = f"{item['activity']} ({item.get('duration','')})"
             bullets.append(ListItem(Paragraph(text, styles["Normal"])))
 
         elements.append(ListFlowable(bullets, bulletType="bullet"))
@@ -239,34 +263,59 @@ def export_plan_pdf(plan_id: str):
 
 
 # ====================================================
-# Manual Recommendation
+# Get Active Plan by Resident ID
 # ====================================================
-@router.post("/save_recommendation")
-def save_recommendation(payload: dict):
 
-    elder_id = payload.get("elder_id")
-    activity_name = payload.get("activity_name")
+@router.get("/get_active_plan/{resident_id}")
+def get_active_plan(resident_id: str):
 
-    if not elder_id or not activity_name:
-        raise HTTPException(
-            status_code=400,
-            detail="elder_id and activity_name are required",
+    try:
+
+        plans = (
+            db.collection("personalized_plans")
+            .where("residentId", "==", resident_id)
+            .limit(5)
+            .stream()
         )
 
-    doc_ref = db.collection("therapy_assignments").document()
+        for doc in plans:
+            data = doc.to_dict()
 
-    assignment_data = {
-        "id": doc_ref.id,
-        "elder_id": elder_id,
-        "activity_name": activity_name,
-        "duration": payload.get("duration", "30 mins"),
-        "instructions": payload.get("instructions", ""),
-        "assigned_by": payload.get("assigned_by", "Therapist"),
-        "date_assigned": datetime.utcnow().isoformat(),
-        "is_active": True,
-        "type": "therapist",
-    }
+            if data.get("status") == "Active":
+                return data
 
-    doc_ref.set(assignment_data)
+        return {"message": "No approved plan found"}
 
-    return {"message": "Recommendation saved", "id": doc_ref.id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ====================================================
+# Get Plan by Email (Elder Dashboard)
+# ====================================================
+
+@router.get("/get_plan_by_email/{email}")
+def get_plan_by_email(email: str):
+
+    try:
+
+        email = unquote(email)   # ⭐ FIX: convert %40 → @
+
+        plans = (
+            db.collection("personalized_plans")
+            .where("elderEmail", "==", email)
+            .limit(5)
+            .stream()
+        )
+
+        for doc in plans:
+
+            data = doc.to_dict()
+
+            if data.get("status") == "Active":
+                return data
+
+        raise HTTPException(status_code=404, detail="No active plan found")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

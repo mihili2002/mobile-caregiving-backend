@@ -1,11 +1,14 @@
-# app/main.py
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 import mimetypes
 import re
+import warnings
 
 from dotenv import load_dotenv
+
+# Suppress sklearn version mismatch warnings for cleaner terminal output
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 # =========================================================
 # ✅ LOAD ENV (AS EARLY AS POSSIBLE)
@@ -158,6 +161,18 @@ async def global_exception_handler(request: Request, exc: Exception):
 # =========================================================
 @app.on_event("startup")
 def startup():
+    # 0) Dialogflow Auth
+    try:
+        df_key = PROJECT_ROOT / "keys" / "dialogflow.json"
+        if df_key.exists():
+            import os
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(df_key)
+            # print(f"✅ Dialogflow key linked: {df_key}")
+        else:
+            print(f"⚠️ Warning: Dialogflow key not found at {df_key}")
+    except Exception as e:
+        print(f"❌ Failed to set Dialogflow credentials: {e}")
+
     # 1) Firebase
     try:
         init_firebase()
@@ -169,31 +184,19 @@ def startup():
     try:
         from app.services.emotion_predictor import EmotionPredictor
 
-        emotion_models_dir = PROJECT_ROOT / "model"
+        # New path for the local .pt model (from screenshot)
+        model_pt_path = PROJECT_ROOT / "ml" / "member2_chatbot" / "models" / "best_emotion_model.pt"
 
-        if not (emotion_models_dir / "emotion_model.pkl").exists():
-            emotion_models_dir = Path(r"C:\Users\ASUS\Desktop\IME\mobile-caregiving-backend\model")
-
-        model_path = emotion_models_dir / "emotion_model.pkl"
-        scaler_path = emotion_models_dir / "scaler.pkl"
-        encoder_path = emotion_models_dir / "label_encoder.pkl"
-
-        if not model_path.exists():
-            raise FileNotFoundError(f"emotion_model.pkl not found at {model_path}")
-        if not scaler_path.exists():
-            raise FileNotFoundError(f"scaler.pkl not found at {scaler_path}")
-        if not encoder_path.exists():
-            raise FileNotFoundError(f"label_encoder.pkl not found at {encoder_path}")
-
-        app.state.emotion_predictor = EmotionPredictor(
-            model_path=str(model_path),
-            scaler_path=str(scaler_path),
-            encoder_path=str(encoder_path),
-        )
-        print("✅ EmotionPredictor loaded!")
+        if model_pt_path.exists():
+            app.state.emotion_predictor = EmotionPredictor(model_path=model_pt_path)
+            # print("✅ EmotionPredictor loaded!") -> EmotionPredictor prints its own success
+        else:
+            # Fallback to old behavior if .pt is somehow missing
+            app.state.emotion_predictor = EmotionPredictor()
+            print("⚠️ Local .pt Emotion Model missing. Initialized in text/wav2vec2 fallback mode.")
     except Exception as e:
         app.state.emotion_predictor = None
-        print("❌ EmotionPredictor failed:", repr(e))
+        print("❌ EmotionPredictor failed to initialize:", repr(e))
 
     # 3) ML Models
     try:
@@ -229,8 +232,8 @@ try:
     from app.workers.aggregator_worker import start_aggregator
 
     # Disabled to prevent Firestore quota exhaustion
-    # threading.Thread(target=start_scheduler, daemon=True).start()
-    # threading.Thread(target=start_aggregator, daemon=True).start()
+    threading.Thread(target=start_scheduler, daemon=True).start()
+    threading.Thread(target=start_aggregator, daemon=True).start()
 
     print("⚠️ Background workers disabled (dev mode).")
 

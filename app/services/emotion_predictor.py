@@ -75,6 +75,34 @@ class EmotionPredictor:
     def __init__(self, model_path=None, scaler_path=None, encoder_path=None):
         # Load wav2vec2 as fallback audio model
         self._audio_pipe = None
+        self._local_audio_model = None
+        self._local_labels = None
+        
+        # 1. Try internal local model (.pt) if provided
+        if model_path and str(model_path).endswith('.pt'):
+            try:
+                import torch
+                from pathlib import Path
+                print(f"Loading local PyTorch emotion model from {model_path}...")
+                
+                # We'll use the EmotionPredictor from emotion_inference or similar logic
+                # For now, let's load it directly if we can
+                self._local_audio_model = torch.load(model_path, map_location="cpu")
+                if hasattr(self._local_audio_model, "eval"):
+                    self._local_audio_model.eval()
+                
+                # Try to load labels if sibling file exists
+                labels_path = Path(model_path).parent / "emotion_labels.json"
+                if labels_path.exists():
+                    import json
+                    self._local_labels = json.loads(labels_path.read_text())["labels"]
+                
+                print("✅ Local .pt Emotion Model loaded!")
+                return # Don't load wav2vec2 if we have local model
+            except Exception as e:
+                print(f"⚠️ Local .pt model failed: {e}")
+
+        # 2. Fallback to wav2vec2 (Hugging Face)
         try:
             from transformers import pipeline
             print("Loading wav2vec2 audio emotion model (fallback)...")
@@ -113,7 +141,58 @@ class EmotionPredictor:
         return best_quadrant, confidence
 
     def predict_from_audio(self, wav_path: str) -> tuple[str, float]:
-        """Fallback method — wav2vec2 deep learning on audio."""
+        """Fallback method — local .pt model or wav2vec2 deep learning on audio."""
+        
+        # --- Local .pt Model Logic ---
+        if self._local_audio_model is not None:
+            try:
+                import torch
+                import librosa
+                # Basic preprocessing matching emotion_inference.py
+                sr = 16000
+                target_len = 64000
+                audio, _ = librosa.load(str(wav_path), sr=sr, mono=True)
+                
+                if len(audio) < target_len:
+                    audio = np.pad(audio, (0, target_len - len(audio)), mode="constant")
+                else:
+                    audio = audio[:target_len]
+                
+                x = torch.tensor(audio, dtype=torch.float32).unsqueeze(0) # [1, T]
+                
+                with torch.no_grad():
+                    logits = self._local_audio_model(x)
+                    if isinstance(logits, (tuple, list)):
+                        logits = logits[0]
+                    
+                    probs = torch.softmax(logits, dim=-1).squeeze(0)
+                    conf, idx = torch.max(probs, dim=-1)
+                    
+                    raw_label = "neutral"
+                    if self._local_labels and idx < len(self._local_labels):
+                        raw_label = self._local_labels[int(idx)]
+                
+                # Map raw labels (negative, positive, anxious, neutral) to Q1-Q4
+                # positive -> Q1
+                # anxious -> Q2
+                # negative -> Q3
+                # neutral -> Q4
+                mapping = {
+                    "positive": "Q1",
+                    "anxious": "Q2",
+                    "negative": "Q3",
+                    "neutral": "Q4"
+                }
+                quadrant = mapping.get(raw_label.lower(), "Q4")
+                
+                print(f"AUDIO local .pt: {raw_label} ({conf.item():.2f}) → {quadrant}")
+                return quadrant, float(conf.item())
+                
+            except Exception as e:
+                print(f"Local .pt audio emotion failed: {e}")
+                # Fall through to wav2vec2 if local fails
+
+        # --- wav2vec2 Logic ---
         if self._audio_pipe is None:
             print("⚠️ Audio model not available, defaulting to Q4")
             return "Q4", 0.5
