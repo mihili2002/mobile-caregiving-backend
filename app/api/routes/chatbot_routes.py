@@ -303,8 +303,14 @@ def sessions(
     limit: int = Query(50, ge=1, le=200),
     authorization: str | None = Header(default=None),
 ):
+    print("1. entered /chatbot/sessions", flush=True)
+
     uid = _uid_from_auth_header(authorization)
+    print(f"2. auth ok, uid={uid}", flush=True)
+
     items = list_sessions_for_user(uid=uid, limit=limit) or []
+    print(f"3. fetched sessions, count={len(items)}", flush=True)
+
     return {"items": items}
 
 @router.get("/emotions")
