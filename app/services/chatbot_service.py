@@ -40,7 +40,7 @@ class ChatbotService:
                 tokenizer=tokenizer,
                 top_k=1,
             )
-            print("✅ Emotion model loaded successfully!")
+            print(" Emotion model loaded successfully!")
         except Exception as e:
             print("❌ Failed to load emotion model:", e)
             self.pipeline = None
@@ -89,7 +89,7 @@ class ChatbotService:
             return {"intent": None, "reply": ""}
 
     def chat(self, message: str, session_id: str):
-        # ✅ emotion of elder/user message
+        #  emotion of elder/user message
         user_emotion = self.predict_emotion(message)
 
         # dialog / bot reply
