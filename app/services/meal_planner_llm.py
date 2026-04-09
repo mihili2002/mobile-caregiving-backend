@@ -1,28 +1,26 @@
-import warnings
-# Suppress the google-generativeai deprecation warning globally in this module
-warnings.filterwarnings("ignore", category=FutureWarning)
-
+# app/services/meal_planner_llm.py
+ 
 import os
 import json
 import re
 from pathlib import Path
 from typing import Dict, List, Any
-
+ 
 from dotenv import load_dotenv
-
+ 
 try:
     import google.generativeai as genai
 except ImportError:
     genai = None
-
-
+ 
+ 
 # -------------------------------------------------------
 # Load .env reliably from project root
 # -------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
-
-
+ 
+ 
 def _get_gemini_client():
     """
     Lazily create Gemini client.
@@ -32,22 +30,22 @@ def _get_gemini_client():
         raise RuntimeError(
             "google.generativeai is not installed. Install it with: pip install google-generativeai"
         )
-
+ 
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError(
             "Gemini API key not found. Set GOOGLE_API_KEY (or GEMINI_API_KEY) in .env "
             "or as an environment variable."
         )
-
+ 
     genai.configure(api_key=api_key)
     return genai.GenerativeModel("gemini-2.5-flash")
-
-
+ 
+ 
 def _extract_json_from_text(text: str) -> Dict[str, Any]:
     """
     Robustly extract a JSON object from LLM free-text output.
-
+ 
     Strategy:
     - Strip common fences (```json, ```).
     - Find first "{" and last "}" and attempt to parse that substring.
@@ -57,7 +55,7 @@ def _extract_json_from_text(text: str) -> Dict[str, Any]:
     original = text
     # Remove common markdown/code fences
     text = text.replace("```json", "").replace("```", "").strip()
-
+ 
     # Quick attempt: find first { and last }
     first = text.find("{")
     last = text.rfind("}")
@@ -69,13 +67,13 @@ def _extract_json_from_text(text: str) -> Dict[str, Any]:
         except json.JSONDecodeError:
             # fall through to regex attempts
             pass
-
+ 
     # Regex attempt: non-greedy find top-level JSON-like braces blocks
     # This will try to find the largest balanced JSON-like substring.
     # We attempt several candidates and try to parse them (largest-first).
     brace_positions = [m.start() for m in re.finditer(r"\{", text)]
     end_positions = [m.start() for m in re.finditer(r"\}", text)]
-
+ 
     # Generate candidate substrings by pairing a start with the last end after it
     candidates = []
     for s in brace_positions:
@@ -85,17 +83,17 @@ def _extract_json_from_text(text: str) -> Dict[str, Any]:
             continue
         e = ends_after[-1]
         candidates.append(text[s : e + 1])
-
+ 
     # sort candidates by length descending (prefer larger JSON objects)
     candidates = sorted(set(candidates), key=len, reverse=True)
-
+ 
     for cand in candidates:
         try:
             parsed = json.loads(cand)
             return parsed
         except json.JSONDecodeError:
             continue
-
+ 
     # Final fallback: try to parse entire cleaned text
     try:
         parsed = json.loads(text)
@@ -107,8 +105,8 @@ def _extract_json_from_text(text: str) -> Dict[str, Any]:
             doc=text,
             pos=0,
         ) from je
-
-
+ 
+ 
 def _normalize_parsed_week(parsed: Dict[str, Any]) -> Dict[str, Any]:
     """
     Ensure the parsed dict has a 'week' key (list) and 'dietitian_notes' (dict).
@@ -116,7 +114,7 @@ def _normalize_parsed_week(parsed: Dict[str, Any]) -> Dict[str, Any]:
     Adds lightweight 'parse_warnings' list on the returned dict when we coerce things.
     """
     warnings: List[str] = []
-
+ 
     # Normalize week key from common alternatives
     week_keys = ["week", "Week", "week_list", "weekly", "week_days", "weekdays", "weekly_meal_plan"]
     week_value = None
@@ -128,7 +126,7 @@ def _normalize_parsed_week(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 week_value = week_value["week"]
             # keep the first hit
             break
-
+ 
     if week_value is None:
         # No week found — we will not throw here, but return an explanatory error structure
         warnings.append("No 'week' key found in LLM parsed JSON.")
@@ -146,7 +144,7 @@ def _normalize_parsed_week(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 # Not a list — coerce to empty and warn
                 warnings.append(f"'week' found but not a list (type={type(week_value)}). Coerced to empty list.")
                 parsed["week"] = []
-
+ 
     # Normalize dietitian_notes
     notes_keys = ["dietitian_notes", "dietitianNotes", "dietitian", "notes", "dietitian_note"]
     notes_value = {}
@@ -154,7 +152,7 @@ def _normalize_parsed_week(parsed: Dict[str, Any]) -> Dict[str, Any]:
         if k in parsed and parsed[k] is not None:
             notes_value = parsed[k]
             break
-
+ 
     if not isinstance(notes_value, dict):
         # if notes_value is string, wrap it
         if isinstance(notes_value, str) and notes_value.strip():
@@ -162,15 +160,15 @@ def _normalize_parsed_week(parsed: Dict[str, Any]) -> Dict[str, Any]:
             warnings.append("Wrapped string dietitian_notes into dict {'text': ...}")
         else:
             notes_value = {}
-
+ 
     parsed["dietitian_notes"] = notes_value
-
+ 
     if warnings:
         parsed["parse_warnings"] = warnings
-
+ 
     return parsed
-
-
+ 
+ 
 def generate_weekly_meal_plan(
     nutrients: Dict[str, Any],
     foods: List[Dict[str, Any]],
@@ -179,25 +177,25 @@ def generate_weekly_meal_plan(
     """
     Brain 3: LLM meal plan generation for 7 days (weekly)
     """
-
+ 
     # If food list is empty - return safe response
     if not foods:
         return {
             "error": "No foods available after filtering",
             "week": []
         }
-
+ 
     foods_text = "\n".join(
         f"- {f.get('Food')} ({f.get('Calories (kcal)')} kcal, "
         f"{f.get('Carbohydrate (g)')}g carbs, {f.get('Protein (g)')}g protein, {f.get('Fat (g)')}g fat)"
         for f in foods
     )
-
+ 
     prompt = f"""
 You are a senior clinical dietician.
-
+ 
 Create a **7-day weekly meal plan** for an elderly user.
-
+ 
 IMPORTANT RULES:
 - ONLY use foods from the Allowed Foods list.
 - DO NOT include foods not listed.
@@ -208,7 +206,7 @@ IMPORTANT RULES:
 - Keep plan mild (non-spicy) when aversion is spicy.
 - For hypertension/heart disease: prefer low-oil, low-sodium preparation notes.
 - Return STRICT JSON ONLY. No markdown.
-
+ 
 ### Patient Details:
 - Age: {patient.get("age")}
 - Gender: {patient.get("gender")}
@@ -217,17 +215,17 @@ IMPORTANT RULES:
 - Allergies: {patient.get("food_allergies")}
 - Preferred Cuisine: {patient.get("preferred_cuisine")}
 - Food Aversions: {patient.get("food_aversions")}
-
+ 
 ### DAILY Nutrient Targets (approx):
 - Calories: {nutrients.get("Recommended_Calories")}
 - Protein: {nutrients.get("Recommended_Protein")}
 - Carbs: {nutrients.get("Recommended_Carbs")}
 - Fats: {nutrients.get("Recommended_Fats")}
 - Recommended Meal Plan: {nutrients.get("Recommended_Meal_Plan")}
-
+ 
 ### Allowed Foods:
 {foods_text}
-
+ 
 ### OUTPUT FORMAT (STRICT JSON):
 {{
   "week": [
@@ -302,7 +300,7 @@ IMPORTANT RULES:
   }}
 }}
 """
-
+ 
     # Generate content from Gemini
     try:
         model = _get_gemini_client()
@@ -315,12 +313,12 @@ IMPORTANT RULES:
             "details": str(e),
             "week": []
         }
-
+ 
     # Debug logging: capture raw LLM output for easier debugging
     print("===== LLM RAW OUTPUT START =====")
     print(text[:800])  # print up to first 800 chars to avoid flooding logs
     print("===== LLM RAW OUTPUT END =====")
-
+ 
     # Attempt robust JSON extraction & normalization
     try:
         parsed = _extract_json_from_text(text)
@@ -331,14 +329,14 @@ IMPORTANT RULES:
     except Exception as e:
         print("LLM parse exception:", repr(e))
         return {"error": "Failed to extract JSON from LLM output", "raw": text, "parse_error": str(e), "week": []}
-
+ 
     # Normalize keys and ensure 'week' + 'dietitian_notes' exist and are well-typed
     normalized = _normalize_parsed_week(parsed)
-
+ 
     # Final sanity checks and helpful debug prints
     week_list = normalized.get("week", [])
     notes = normalized.get("dietitian_notes", {})
-
+ 
     print("=== Parsed week length ===", len(week_list))
     # Print a small sample of first day's structure if present
     if week_list and isinstance(week_list, list):
@@ -347,7 +345,7 @@ IMPORTANT RULES:
             print("=== Week[0] sample keys ===", list(sample0.keys()) if isinstance(sample0, dict) else type(sample0))
         except Exception:
             pass
-
+ 
     # If 'week' is empty, include a helpful message inside returned dict
     if not isinstance(week_list, list) or len(week_list) == 0:
         # keep dietitian notes if present
@@ -362,7 +360,7 @@ IMPORTANT RULES:
             ret["parse_warnings"] = normalized["parse_warnings"]
         print("LLM produced empty week; returning error wrapper.")
         return ret
-
+ 
     # Otherwise return the normalized parsed object (safe shape)
     # Ensure we only return JSON-serializable stuff
     try:
