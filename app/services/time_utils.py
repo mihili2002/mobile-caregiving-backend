@@ -1,6 +1,45 @@
 from datetime import datetime, timedelta, time
 import re
 
+from typing import Optional
+
+def extract_time_from_text(text: str) -> Optional[str]:
+    """
+    Extracts a time string (e.g. "14:30") from natural language text.
+    Handles basic formats like "2:30 pm", "14:30", "at 4", etc.
+    """
+    text = text.lower()
+    
+    # Try 12-hour format with am/pm: "2:30 pm", "2 pm", "2pm", "2:30pm"
+    match = re.search(r'\b(1[0-2]|0?[1-9])(?::([0-5][0-9]))?\s*(am|pm)\b', text)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2) or 0)
+        period = match.group(3)
+        
+        if period == 'pm' and hour != 12:
+            hour += 12
+        elif period == 'am' and hour == 12:
+            hour = 0
+            
+        return f"{hour:02d}:{minute:02d}"
+        
+    # Try 24-hour format: "14:30"
+    match = re.search(r'\b([01]?[0-9]|2[0-3]):([0-5][0-9])\b', text)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        return f"{hour:02d}:{minute:02d}"
+
+    # Try simple number with "at": "at 4", "at 14"
+    match = re.search(r'\bat\s+(1[0-2]|0?[1-9])\b', text)
+    if match:
+        hour = int(match.group(1))
+        # This is very basic fallback assuming exact hour
+        return f"{hour:02d}:00"
+        
+    return None
+
 def extract_time_range(text: str):
     """
     Extracts explicit time ranges from natural language text.

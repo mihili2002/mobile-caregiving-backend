@@ -284,6 +284,28 @@ def mark_snoozed(
     )
 
 
+def mark_snoozed_until(
+    db,
+    schedule_doc_ref,
+    uid: str,
+    task_id: str,
+    snoozed_until_iso: str,
+    actor: str = "elder",
+):
+    return transition_task_status(
+        db=db,
+        schedule_doc_ref=schedule_doc_ref,
+        uid=uid,
+        task_id=task_id,
+        new_status="snoozed",
+        actor=actor,
+        extra_patch={"snoozedUntil": snoozed_until_iso},
+        event_type="snoozed",
+        meta={"snoozed_until": snoozed_until_iso},
+        confidence="medium",
+    )
+
+
 def mark_skipped(
     db,
     schedule_doc_ref,

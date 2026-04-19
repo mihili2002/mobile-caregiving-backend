@@ -125,6 +125,12 @@ class TaskActionRequest(BaseModel):
     snooze_minutes: Optional[int] = 10
     reason: Optional[str] = None
 
+class TaskFollowupRequest(BaseModel):
+    uid: str
+    date: str
+    task_id: str
+    session_id: Optional[str] = None
+
 
 # In-memory storage for pending confirmations
 # In production, Redis or Firestore is better
@@ -138,6 +144,7 @@ GREETINGS = [
     "Hey! Alex is ready! How can I support you right now?"
 ]
 
+pending_task_followups = {}
 
 def detect_task_action_intent(text: str):
     """
@@ -474,6 +481,69 @@ async def process_voice_command(req: VoiceCommandRequest):
                 user_now = datetime.fromisoformat(req.local_time.replace("Z", "+00:00"))
             except Exception:
                 pass
+
+        # ---------------------------------------------------------
+        # X. Pending task followups (rescheduling exact time)
+        # ---------------------------------------------------------
+        if session_id in pending_task_followups:
+            followup = pending_task_followups[session_id]
+
+            if followup["type"] == "reschedule_task":
+                if followup["step"] == "ask_time":
+                    from app.services.time_utils import extract_time_from_text
+                    extracted_time = extract_time_from_text(text)
+                    if extracted_time:
+                        followup["proposed_time"] = extracted_time
+                        followup["step"] = "confirm_time"
+                        pending_task_followups[session_id] = followup
+
+                        return {
+                            "action": "reply",
+                            "reply": f"Okay. Shall I remind you again at {extracted_time}?",
+                            "intent": "task_followup_confirmation",
+                        }
+                    else:
+                        return {
+                            "action": "reply",
+                            "reply": "I didn't catch the time clearly. What time would you like me to remind you again?",
+                            "intent": "task_followup",
+                        }
+
+                elif followup["step"] == "confirm_time":
+                    if any(x in text for x in ["yes", "yeah", "okay", "correct", "sure", "ok", "yep"]):
+                        doc_ref = get_schedule_doc_ref(db, followup["uid"], followup["date"])
+
+                        try:
+                            snooze_dt = datetime.strptime(f"{followup['date']} {followup['proposed_time']}", "%Y-%m-%d %H:%M")
+                        except ValueError:
+                            snooze_dt = datetime.utcnow() + timedelta(minutes=10)
+
+                        from app.services.task_state_service import mark_snoozed_until
+                        mark_snoozed_until(
+                            db=db,
+                            schedule_doc_ref=doc_ref,
+                            uid=followup["uid"],
+                            task_id=followup["task_id"],
+                            snoozed_until_iso=snooze_dt.isoformat(),
+                            actor="elder",
+                        )
+
+                        del pending_task_followups[session_id]
+
+                        return {
+                            "action": "reply",
+                            "reply": f"Alright. I'll remind you again at {followup['proposed_time']}.",
+                            "intent": "task_rescheduled",
+                        }
+
+                    elif any(x in text for x in ["no", "nope", "wrong", "incorrect"]):
+                        followup["step"] = "ask_time"
+                        pending_task_followups[session_id] = followup
+                        return {
+                            "action": "reply",
+                            "reply": "Alright. What time would you prefer instead?",
+                            "intent": "task_followup",
+                        }
 
         # ---------------------------------------------------------
         # 0. Pending confirmation flow for newly extracted tasks
@@ -922,3 +992,36 @@ async def run_reminder_engine():
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+        
+
+@router.post("/tasks/request_later")
+async def request_task_later(req: TaskFollowupRequest):
+    db = firestore.client()
+    doc_ref = get_schedule_doc_ref(db, req.uid, req.date)
+    doc = doc_ref.get()
+
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    tasks = doc.to_dict().get("tasks", [])
+    task = next((t for t in tasks if t.get("id") == req.task_id), None)
+
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    session_id = req.session_id or f"{req.uid}_default"
+
+    pending_task_followups[session_id] = {
+        "type": "reschedule_task",
+        "uid": req.uid,
+        "task_id": req.task_id,
+        "date": req.date,
+        "task_name": task.get("task_name", "this task"),
+        "step": "ask_time",
+    }
+
+    return {
+        "action": "reply",
+        "reply": f"Alright. Then, at what time would you like to complete {task.get('task_name', 'this task')}?",
+        "intent": "task_followup",
+    }        
