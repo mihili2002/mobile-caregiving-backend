@@ -32,6 +32,7 @@ from app.api.routes import (
     patients,
     caregivers,
     risk,
+    health_routes,
     ai_routes,
     schedule_routes,
     behavior_routes,
@@ -47,6 +48,7 @@ from app.api.routes.doctor import (
     dashboard as doctor_dashboard,
     meal_plans as doctor_meal_plans,
 )
+from app.api.routes.meal_plans import router as api_meal_plans_router
 
 from app.api.routes.chatbot_routes import router as chatbot_router
 from app.api.routes.therapy_routes import router as therapy_router
@@ -446,10 +448,14 @@ app.include_router(patients.router, prefix="/api")
 app.include_router(caregivers.router, prefix="/api")
 app.include_router(risk.router, prefix="/api")
 
+# Health helpers (PDF extraction)
+app.include_router(health_routes.router)
+
 app.include_router(health_submissions.router)
 app.include_router(elder_meal_plans.router)
 app.include_router(doctor_dashboard.router)
 app.include_router(doctor_meal_plans.router)
+app.include_router(api_meal_plans_router)
 
 app.include_router(chatbot_router)
 app.include_router(ai_routes.router)

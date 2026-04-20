@@ -6,12 +6,13 @@ from uuid import uuid4
 SubmissionStatus = Literal["pending", "approved", "rejected"]
 
 class ElderHealthSubmissionIn(BaseModel):
+    elder_id: str = Field(..., description="UID of the elder being managed") # <--- Add this
     # ----- Basic Information -----
-    age: int = Field(..., ge=0)
-    gender: Literal["Male", "Female"]
+    age: Optional[int] = Field(None, ge=0)
+    gender: Optional[Literal["Male", "Female"]] = None
 
-    height_cm: float = Field(..., gt=0)
-    weight_kg: float = Field(..., gt=0)
+    height_cm: Optional[float] = Field(None, gt=0)
+    weight_kg: Optional[float] = Field(None, gt=0)
     bmi: Optional[float] = None
 
     # ----- Health Conditions -----
@@ -36,10 +37,10 @@ class ElderHealthSubmissionIn(BaseModel):
     alcohol: bool = False
 
     # ----- Dietary Preferences -----
-    dietary_habit: Literal["Vegetarian", "Vegan", "Non-Vegetarian"]
+    dietary_habit: Optional[Literal["Vegetarian", "Vegan", "Non-Vegetarian"]] = None
     food_allergies: Optional[str] = None
     preferred_cuisine: Optional[
-        Literal["Sri Lankan", "Indian", "Mediterranean", "Continental", "Mixed"]
+        Literal["Sri Lankan", "Indian", "Mediterranean", "Continental", "Mixed", "Chinese"]
     ] = None
     food_aversions: Optional[str] = None
     caloric_intake: Optional[float] = None
