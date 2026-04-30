@@ -2,6 +2,7 @@ import os
 import json
 import requests
 import re
+import time
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -222,8 +223,7 @@ async def process_reschedule_conversation(
             "max_tokens": 150,
         }
 
-        response = requests.post(OPENAI_URL, headers=_headers(), json=payload, timeout=15)
-        response.raise_for_status()
+        response = _call_openai_with_retry(payload)
 
         raw_reply = response.json()["choices"][0]["message"]["content"].strip()
         chat_history[session_id].append({"role": "assistant", "content": raw_reply})
@@ -299,6 +299,39 @@ def _headers() -> Dict[str, str]:
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
     }
+
+
+def _call_openai_with_retry(
+    payload: Dict[str, Any],
+    max_retries: int = 3,
+    base_wait: float = 5.0,
+) -> requests.Response:
+    """
+    Calls OpenAI with exponential backoff on 429 Rate Limit errors.
+    Waits: 5s → 15s → 45s before each retry.
+    Raises the last exception if all retries are exhausted.
+    """
+    wait = base_wait
+    for attempt in range(max_retries + 1):
+        response = requests.post(
+            OPENAI_URL,
+            headers=_headers(),
+            json=payload,
+            timeout=20,
+        )
+        if response.status_code == 429 and attempt < max_retries:
+            log_debug(
+                "openai_rate_limit_retry",
+                {"attempt": attempt + 1, "wait_seconds": wait},
+            )
+            time.sleep(wait)
+            wait *= 3  # 5s → 15s → 45s
+            continue
+        response.raise_for_status()
+        return response
+    # Should not reach here, but satisfy the type checker
+    response.raise_for_status()
+    return response
 
 
 def _to_24h(time_str: Optional[str], period: Optional[str]) -> Optional[str]:
@@ -465,13 +498,7 @@ async def process_voice_with_llm(
             "max_tokens": 300,
         }
 
-        response = requests.post(
-            OPENAI_URL,
-            headers=_headers(),
-            json=payload,
-            timeout=15,
-        )
-        response.raise_for_status()
+        response = _call_openai_with_retry(payload)
 
         data = response.json()
         raw_reply = data["choices"][0]["message"]["content"].strip()

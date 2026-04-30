@@ -162,6 +162,10 @@ GREETINGS = [
 pending_task_followups = {}
 pending_skip_confirmations = {}  # session_id -> {uid, date, task_id, actor, reason}
 
+# Greeting cache: uid -> {"date": "YYYY-MM-DD", "reply": "..."}
+# Prevents calling OpenAI on every chatbot open — one greeting per user per day.
+_greeting_cache: dict = {}
+
 
 # ---------------------------------------------------------
 # Reschedule validation helpers
@@ -1141,7 +1145,16 @@ async def recall_memory(req: VoiceCommandRequest):
 
 @router.get("/greet")
 async def get_greeting(uid: Optional[str] = None):
+    import random
+
     if uid:
+        today = datetime.now().strftime("%Y-%m-%d")
+        cached = _greeting_cache.get(uid)
+
+        # Return cached greeting if it was generated today
+        if cached and cached.get("date") == today:
+            return {"reply": cached["reply"]}
+
         try:
             context = await get_context_summary(uid)
             res = await process_voice_with_llm(
@@ -1150,12 +1163,14 @@ async def get_greeting(uid: Optional[str] = None):
                 f"{uid}_greet",
                 context=context,
             )
-            return {"reply": res["reply"]}
+            reply = res["reply"]
+            # Cache the result for today
+            _greeting_cache[uid] = {"date": today, "reply": reply}
+            return {"reply": reply}
         except Exception as e:
             from app.services.logger import log_debug
             log_debug("greet_error", {"error": str(e)})
 
-    import random
     return {"reply": random.choice(GREETINGS)}
 
 
