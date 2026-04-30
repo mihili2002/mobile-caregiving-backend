@@ -219,12 +219,22 @@ def startup():
         print("⚠️ load_models() failed. Reason:", str(e))
 
     # 5) Chatbot service
-    try:
-        from app.services.chatbot_service import ChatbotService
-        app.state.chatbot_service = ChatbotService()
-        print("✅ ChatbotService initialized")
-    except Exception as e:
-        print("⚠️ ChatbotService init failed. Reason:", str(e))
+    # 5) Chatbot service (FIXED - ALWAYS SAFE STATE ASSIGNMENT)
+try:
+    from app.services.chatbot_service import ChatbotService
+
+    chatbot_service = ChatbotService()
+
+    # IMPORTANT: always attach to state even if partial failure
+    app.state.chatbot_service = chatbot_service
+
+    print("✅ ChatbotService initialized")
+
+except Exception as e:
+    print("❌ ChatbotService init failed:", repr(e))
+
+    # CRITICAL: prevent runtime crash later
+    app.state.chatbot_service = None
 
    # --- Background workers (disabled in dev mode)
 try:
