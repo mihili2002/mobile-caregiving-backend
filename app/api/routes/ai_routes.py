@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException, File, UploadFile, Form, Request
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import traceback
 from datetime import datetime, timedelta
 from firebase_admin import firestore
 import re
 
 from app.models.schemas import ExtractionResponse, Medication
-from app.services.openai_service import process_voice_with_llm, RECALL_SYSTEM_PROMPT
+from app.services.openai_service import process_voice_with_llm, RECALL_SYSTEM_PROMPT, process_reschedule_conversation, reset_chat_session
 from app.services.memory_engine import memory_engine
 from app.services.time_utils import extract_time_range, is_last_time_query
 from app.services.extractor import extract_medications
@@ -18,7 +18,9 @@ from app.services.task_state_service import (
     mark_acknowledged,
     mark_in_progress,
     mark_snoozed,
-    mark_skipped,
+    handle_task_skip,      # orchestrator — replaces direct mark_skipped() calls
+    reschedule_task_time,
+    update_task_in_schedule,
 )
 from app.services.reminder_engine import process_todays_schedules
 from app.services.voice_processing_service import voice_processing_service
@@ -121,9 +123,22 @@ class TaskActionRequest(BaseModel):
     uid: str
     date: str
     task_id: str
-    actor: Optional[str] = "elder"
+    actor: Optional[str] = "elder"         # "elder" | "caregiver"
     snooze_minutes: Optional[int] = 10
     reason: Optional[str] = None
+    confirmed: Optional[bool] = False       # elder confirmed a policy-gated skip
+    notify_caregiver: Optional[bool] = None # None = use policy default
+
+class TaskSkipRequest(TaskActionRequest):
+    reasons: List[str] = []
+    skip_decision_by: Optional[str] = None
+    caregiver_skip_note: Optional[str] = None
+
+class ReviewSkipRequest(BaseModel):
+    uid: str
+    date: str
+    task_id: str
+    actor: str = "caregiver"
 
 class TaskFollowupRequest(BaseModel):
     uid: str
@@ -145,6 +160,78 @@ GREETINGS = [
 ]
 
 pending_task_followups = {}
+pending_skip_confirmations = {}  # session_id -> {uid, date, task_id, actor, reason}
+
+
+# ---------------------------------------------------------
+# Reschedule validation helpers
+# ---------------------------------------------------------
+
+def _is_valid_reschedule_time(time_str: Optional[str]) -> bool:
+    """
+    Checks that the time string is a well-formed HH:MM value in 24-hour format
+    (as produced by _to_24h in openai_service) and within a realistic clock range.
+    """
+    if not time_str:
+        return False
+    try:
+        h, m = time_str.split(":")
+        return 0 <= int(h) <= 23 and 0 <= int(m) <= 59
+    except (ValueError, AttributeError):
+        return False
+
+
+def _is_valid_reschedule_date(date_str: Optional[str], user_now: Optional[datetime] = None) -> bool:
+    """
+    Checks that the date string is ISO-formatted (YYYY-MM-DD) and not more than
+    30 days in the past (a simple sanity guard; rescheduling to last week is a
+    data error, not a user intent).
+    """
+    if not date_str:
+        return False
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        now = user_now or datetime.now()
+        # Allow dates from yesterday (timezone drift) up to 365 days in the future
+        delta = (dt.date() - now.date()).days
+        return -1 <= delta <= 365
+    except ValueError:
+        return False
+
+
+def _validate_reschedule_result(
+    llm_result: dict,
+    followup_date: str,
+    user_now: Optional[datetime] = None,
+) -> tuple[bool, str]:
+    """
+    Backend-side validation of an LLM reschedule result.
+    Treats the LLM output as untrusted.
+
+    Returns:
+        (ok: bool, reason: str)
+        ok=True  → safe to commit
+        ok=False → keep conversation alive; `reason` explains why
+    """
+    # Gate 1: explicit user confirmation
+    if not llm_result.get("confirmed"):
+        return False, "not_confirmed"
+
+    # Gate 2: time must be present and well-formed
+    if not _is_valid_reschedule_time(llm_result.get("time")):
+        return False, "invalid_time"
+
+    # Gate 3: period (AM/PM) must be present — guards against silent AM/PM flip
+    if not llm_result.get("period") in ("AM", "PM"):
+        return False, "missing_period"
+
+    # Gate 4: date must be present and plausible
+    # We accept the LLM date if given, otherwise fall back to the followup date.
+    effective_date = llm_result.get("date") or followup_date
+    if not _is_valid_reschedule_date(effective_date, user_now):
+        return False, "invalid_date"
+
+    return True, "ok"
 
 def detect_task_action_intent(text: str):
     """
@@ -321,8 +408,29 @@ def apply_task_action(db, doc_ref, uid: str, action_data: dict):
 
     if action_type in ["skip", "cancel_reminder"]:
         reason = action_data.get("reason", "voice_skip")
-        mark_skipped(db, doc_ref, uid, task_id, actor="elder", reason=reason)
-        return "skip", f"Okay, I marked {current_task['task_name']} as skipped for now."
+        confirmed = bool(action_data.get("confirmed", False))
+
+        skip_result = handle_task_skip(
+            db=db,
+            schedule_doc_ref=doc_ref,
+            uid=uid,
+            task_id=task_id,
+            date=date,
+            actor="elder",
+            reason=reason,
+            confirmed=confirmed,
+        )
+
+        if skip_result["status"] == "confirmation_required":
+            return "skip_confirm", skip_result["message"]
+
+        if skip_result["status"] == "blocked":
+            return "skip_blocked", skip_result["message"]
+
+        if skip_result.get("escalation", {}).get("notified"):
+            return "skip", f"Okay, I marked {current_task['task_name']} as skipped and informed your caregiver."
+
+        return "skip", f"Okay, I marked {current_task['task_name']} as skipped."
 
     if action_type == "repeat":
         return "repeat", f"Of course. Let me repeat the reminder for {current_task['task_name']}."
@@ -483,67 +591,161 @@ async def process_voice_command(req: VoiceCommandRequest):
                 pass
 
         # ---------------------------------------------------------
-        # X. Pending task followups (rescheduling exact time)
+        # X. Pending task followups — OpenAI-powered reschedule conversation
         # ---------------------------------------------------------
         if session_id in pending_task_followups:
             followup = pending_task_followups[session_id]
 
-            if followup["type"] == "reschedule_task":
-                if followup["step"] == "ask_time":
-                    from app.services.time_utils import extract_time_from_text
-                    extracted_time = extract_time_from_text(text)
-                    if extracted_time:
-                        followup["proposed_time"] = extracted_time
-                        followup["step"] = "confirm_time"
-                        pending_task_followups[session_id] = followup
+            if followup["type"] == "reschedule_task" and followup["step"] == "llm_conversation":
+                reschedule_session_id = f"{session_id}_reschedule_{followup['task_id']}"
 
-                        return {
-                            "action": "reply",
-                            "reply": f"Okay. Shall I remind you again at {extracted_time}?",
-                            "intent": "task_followup_confirmation",
+                # ---------------------------------------------------
+                # Version safety — bump the counter BEFORE the await.
+                # We capture this turn's version locally; after the
+                # LLM returns we check whether a newer turn arrived
+                # while we were waiting.  If so, this response is stale
+                # and must be discarded.
+                # ---------------------------------------------------
+                followup["version"] = followup.get("version", 1) + 1
+                this_turn_version = followup["version"]
+
+                llm_result = await process_reschedule_conversation(
+                    text=raw_text,
+                    task_name=followup["task_name"],
+                    session_id=reschedule_session_id,
+                    user_now=user_now,
+                )
+
+                # Check for stale response (a newer turn arrived during the await)
+                current_followup = pending_task_followups.get(session_id)
+                if (
+                    current_followup is None
+                    or current_followup.get("version", 1) != this_turn_version
+                ):
+                    log_debug("reschedule_stale_response_dropped", {
+                        "this_turn_version": this_turn_version,
+                        "current_version": current_followup.get("version") if current_followup else None,
+                        "session_id": session_id,
+                    })
+                    # Return the most recent in-progress reply without acting on it
+                    return {
+                        "action": "reply",
+                        "reply": llm_result["reply"],
+                        "intent": "task_followup",
+                    }
+
+                if llm_result["intent"] == "task_rescheduled" and llm_result["time"]:
+                    # ---------------------------------------------------
+                    # Backend validation — never trust the LLM blindly
+                    # ---------------------------------------------------
+                    ok, reason = _validate_reschedule_result(
+                        llm_result,
+                        followup_date=followup["date"],
+                        user_now=user_now,
+                    )
+
+                    if not ok:
+                        log_debug("reschedule_validation_failed", {
+                            "reason": reason,
+                            "llm_result": llm_result,
+                            "session_id": session_id,
+                        })
+
+                        # Map the failure reason to a user-friendly clarification prompt
+                        _clarify = {
+                            "not_confirmed":  "Just to be sure — would you like me to reschedule that? Please say yes or no.",
+                            "invalid_time":   "I'm sorry, I didn't quite catch a valid time. Could you say it again? For example, \"6:30 in the evening\".",
+                            "missing_period": "Could you let me know whether that's in the morning or the evening?",
+                            "invalid_date":   "I'm not sure which date you meant. Could you say today, tomorrow, or a specific day?",
                         }
-                    else:
+                        clarification = _clarify.get(
+                            reason,
+                            "I'm sorry, I couldn't confirm the details. Could you say the time again?"
+                        )
+                        # Keep the session alive so the user can retry
                         return {
                             "action": "reply",
-                            "reply": "I didn't catch the time clearly. What time would you like me to remind you again?",
+                            "reply": clarification,
                             "intent": "task_followup",
                         }
 
-                elif followup["step"] == "confirm_time":
-                    if any(x in text for x in ["yes", "yeah", "okay", "correct", "sure", "ok", "yep"]):
-                        doc_ref = get_schedule_doc_ref(db, followup["uid"], followup["date"])
+                    # ---------------------------------------------------
+                    # Validation passed — commit in strict order:
+                    # 1. build datetime  2. Firestore write  3. delete session
+                    # Session is NEVER deleted before the write succeeds.
+                    # ---------------------------------------------------
+                    confirmed_time = llm_result["time"]
+                    confirmed_date = llm_result.get("date") or followup["date"]
+                    doc_ref = get_schedule_doc_ref(db, followup["uid"], confirmed_date)
 
-                        try:
-                            snooze_dt = datetime.strptime(f"{followup['date']} {followup['proposed_time']}", "%Y-%m-%d %H:%M")
-                        except ValueError:
-                            snooze_dt = datetime.utcnow() + timedelta(minutes=10)
+                    try:
+                        new_dt = datetime.strptime(
+                            f"{confirmed_date} {confirmed_time}",
+                            "%Y-%m-%d %H:%M"
+                        )
+                    except ValueError:
+                        new_dt = datetime.utcnow() + timedelta(minutes=10)
 
-                        from app.services.task_state_service import mark_snoozed_until
-                        mark_snoozed_until(
+                    # Preserve original grace window
+                    doc_now = doc_ref.get()
+                    grace_minutes = 30
+                    if doc_now.exists:
+                        tasks_now = doc_now.to_dict().get("tasks", [])
+                        task_data = next(
+                            (t for t in tasks_now if t.get("id") == followup["task_id"]),
+                            None
+                        )
+                        if task_data:
+                            grace_minutes = int(task_data.get("graceMinutes", 30) or 30)
+
+                    valid_until_dt = new_dt + timedelta(minutes=grace_minutes)
+
+                    try:
+                        # Step 2 — write to Firestore (may raise)
+                        reschedule_task_time(
                             db=db,
                             schedule_doc_ref=doc_ref,
                             uid=followup["uid"],
                             task_id=followup["task_id"],
-                            snoozed_until_iso=snooze_dt.isoformat(),
+                            new_time_str=confirmed_time,
+                            new_datetime_iso=new_dt.isoformat(),
+                            valid_until_iso=valid_until_dt.isoformat(),
                             actor="elder",
                         )
-
-                        del pending_task_followups[session_id]
-
+                    except Exception as write_err:
+                        # Firestore failed — keep session alive so the user can retry.
+                        # Do NOT delete the session here.
+                        log_debug("reschedule_firestore_error", {
+                            "error": str(write_err),
+                            "uid": followup["uid"],
+                            "task_id": followup["task_id"],
+                            "session_id": session_id,
+                        })
                         return {
                             "action": "reply",
-                            "reply": f"Alright. I'll remind you again at {followup['proposed_time']}.",
-                            "intent": "task_rescheduled",
-                        }
-
-                    elif any(x in text for x in ["no", "nope", "wrong", "incorrect"]):
-                        followup["step"] = "ask_time"
-                        pending_task_followups[session_id] = followup
-                        return {
-                            "action": "reply",
-                            "reply": "Alright. What time would you prefer instead?",
+                            "reply": (
+                                "I'm sorry, I had a little trouble saving that. "
+                                "Could you confirm the time once more?"
+                            ),
                             "intent": "task_followup",
                         }
+
+                    # Step 3 — Firestore write confirmed, now safe to clean up
+                    del pending_task_followups[session_id]
+
+                    # Step 4 — return success
+                    return {
+                        "action": "reply",
+                        "reply": llm_result["reply"],
+                        "intent": "task_rescheduled",
+                    }
+
+                # Conversation still in progress — return LLM reply, keep session alive
+                return {
+                    "action": "reply",
+                    "reply": llm_result["reply"],
+                    "intent": "task_followup",
+                }
 
         # ---------------------------------------------------------
         # 0. Pending confirmation flow for newly extracted tasks
@@ -644,6 +846,54 @@ async def process_voice_command(req: VoiceCommandRequest):
                 }
 
         # ---------------------------------------------------------
+        # 0b. Pending skip confirmation — two-turn confirmation loop
+        # ---------------------------------------------------------
+        if session_id in pending_skip_confirmations:
+            pending = pending_skip_confirmations[session_id]
+
+            if any(x in text for x in ["yes", "yeah", "confirm", "okay", "ok", "do it", "sure", "yep"]):
+                doc_ref = get_schedule_doc_ref(db, pending["uid"], pending["date"])
+                try:
+                    result = handle_task_skip(
+                        db=db,
+                        schedule_doc_ref=doc_ref,
+                        uid=pending["uid"],
+                        task_id=pending["task_id"],
+                        date=pending["date"],
+                        actor=pending["actor"],
+                        reason=pending["reason"],
+                        confirmed=True,
+                    )
+                except Exception as skip_err:
+                    log_debug("skip_confirm_error", {"error": str(skip_err), "session_id": session_id})
+                    del pending_skip_confirmations[session_id]
+                    return {
+                        "action": "reply",
+                        "reply": "I'm sorry, I had trouble skipping that. Please try again.",
+                        "intent": "error",
+                    }
+
+                del pending_skip_confirmations[session_id]
+                notified = result.get("escalation", {}).get("notified", False)
+                return {
+                    "action": "reply",
+                    "reply": (
+                        "Okay, I skipped it and informed your caregiver."
+                        if notified else
+                        "Okay, I skipped it."
+                    ),
+                    "intent": "task_skipped",
+                }
+
+            if any(x in text for x in ["no", "don't", "do not", "cancel", "nope", "never mind"]):
+                del pending_skip_confirmations[session_id]
+                return {
+                    "action": "reply",
+                    "reply": "Alright, I will keep the task active.",
+                    "intent": "skip_cancelled",
+                }
+
+        # ---------------------------------------------------------
         # 1. Fast fallback action detection for very simple phrases
         # ---------------------------------------------------------
         fallback_action = detect_task_action_intent(text)
@@ -651,6 +901,21 @@ async def process_voice_command(req: VoiceCommandRequest):
             today = (user_now or datetime.now()).strftime("%Y-%m-%d")
             doc_ref = get_schedule_doc_ref(db, uid, today)
             applied_action, reply = apply_task_action(db, doc_ref, uid, fallback_action)
+
+            if applied_action == "skip_confirm":
+                # Policy requires elder confirmation — store pending and ask
+                pending_skip_confirmations[session_id] = {
+                    "uid": uid,
+                    "date": today,
+                    "task_id": fallback_action.get("task_ref", ""),
+                    "actor": "elder",
+                    "reason": fallback_action.get("reason", "voice_skip"),
+                }
+                return {
+                    "action": "reply",
+                    "reply": reply,
+                    "intent": "skip_confirmation_required",
+                }
 
             if applied_action:
                 return {
@@ -687,6 +952,21 @@ async def process_voice_command(req: VoiceCommandRequest):
             today = (user_now or datetime.now()).strftime("%Y-%m-%d")
             doc_ref = get_schedule_doc_ref(db, uid, today)
             applied_action, action_reply = apply_task_action(db, doc_ref, uid, action_data)
+
+            if applied_action == "skip_confirm":
+                # Policy requires elder confirmation — store pending and ask
+                pending_skip_confirmations[session_id] = {
+                    "uid": uid,
+                    "date": today,
+                    "task_id": action_data.get("task_ref", ""),
+                    "actor": "elder",
+                    "reason": action_data.get("reason", "voice_skip"),
+                }
+                return {
+                    "action": "reply",
+                    "reply": action_reply,
+                    "intent": "skip_confirmation_required",
+                }
 
             if applied_action:
                 return {
@@ -970,11 +1250,101 @@ async def snooze_task(req: TaskActionRequest):
 
 
 @router.post("/tasks/skip")
-async def skip_task(req: TaskActionRequest):
+async def skip_task(req: TaskSkipRequest):
+    # Validation
+    if not req.reasons:
+        raise HTTPException(status_code=400, detail="At least one skip reason is required.")
+    
+    if (req.skip_decision_by == "caregiver" or req.actor == "caregiver") and not req.caregiver_skip_note:
+        raise HTTPException(status_code=400, detail="Caregiver note is required when a caregiver skips a task.")
+
     db = firestore.client()
     doc_ref = get_schedule_doc_ref(db, req.uid, req.date)
-    mark_skipped(db, doc_ref, req.uid, req.task_id, actor=req.actor or "elder", reason=req.reason)
-    return {"status": "ok", "message": "Task skipped"}
+
+    actor = req.actor or "elder"
+    # Safer option: In elder app, lock decisionBy to actor
+    skip_decision_by = req.skip_decision_by or actor
+    if actor == "elder":
+        skip_decision_by = "elder"
+
+    try:
+        result = handle_task_skip(
+            db=db,
+            schedule_doc_ref=doc_ref,
+            uid=req.uid,
+            task_id=req.task_id,
+            date=req.date,
+            actor=actor,
+            reason=req.reason or (req.reasons[0] if req.reasons else None),
+            skip_reasons=req.reasons,
+            skip_decision_by=skip_decision_by,
+            caregiver_skip_note=req.caregiver_skip_note,
+            confirmed=req.confirmed or False,
+            notify_caregiver_override=req.notify_caregiver,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if result["status"] == "confirmation_required":
+        return {
+            "status": "confirm",
+            "message": result["message"],
+            "intent": "skip_confirmation_required",
+        }
+
+    if result["status"] == "blocked":
+        return {
+            "status": "blocked",
+            "message": result["message"],
+            "intent": "task_skip_blocked",
+        }
+
+    return {
+        "status": "ok",
+        "message": "Task skipped",
+        "intent": "task_skipped",
+        "caregiver_notified": result.get("escalation", {}).get("notified", False),
+    }
+
+
+@router.post("/tasks/review_skip")
+async def review_skip(req: ReviewSkipRequest):
+    db = firestore.client()
+    doc_ref = get_schedule_doc_ref(db, req.uid, req.date)
+
+    try:
+        # 1. Update task in schedule
+        update_task_in_schedule(
+            schedule_doc_ref=doc_ref,
+            task_id=req.task_id,
+            patch={
+                "status": "skipped",
+                "skipReviewRequired": False,
+                "lastSkipDecisionBy": req.actor,
+                "skipReviewedAt": datetime.utcnow().isoformat(),
+            }
+        )
+
+        # 2. Log review event
+        log_task_event(
+            db=db,
+            uid=req.uid,
+            task_id=req.task_id,
+            event_type="skip_reviewed",
+            by=req.actor,
+            meta={
+                "date": req.date,
+                "review_source": "caregiver_dashboard"
+            }
+        )
+
+        return {"status": "ok", "message": "Review recorded"}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/run_reminder_engine")
@@ -1009,19 +1379,41 @@ async def request_task_later(req: TaskFollowupRequest):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    task_name = task.get("task_name", "this task")
     session_id = req.session_id or f"{req.uid}_default"
+    reschedule_session_id = f"{session_id}_reschedule_{req.task_id}"
 
+    # Clear any stale reschedule session for this task
+    reset_chat_session(reschedule_session_id)
+
+    # Register the pending followup — LLM will drive the conversation
     pending_task_followups[session_id] = {
         "type": "reschedule_task",
         "uid": req.uid,
         "task_id": req.task_id,
         "date": req.date,
-        "task_name": task.get("task_name", "this task"),
-        "step": "ask_time",
+        "task_name": task_name,
+        "step": "llm_conversation",
+        "version": 1,          # monotonic turn counter — guards against out-of-order responses
     }
+
+    # Use LLM to generate a warm, natural opening question
+    user_now = None
+    try:
+        from datetime import datetime as _dt
+        user_now = _dt.now()
+    except Exception:
+        pass
+
+    llm_opening = await process_reschedule_conversation(
+        text="start",  # sentinel — system prompt handles first message
+        task_name=task_name,
+        session_id=reschedule_session_id,
+        user_now=user_now,
+    )
 
     return {
         "action": "reply",
-        "reply": f"Alright. Then, at what time would you like to complete {task.get('task_name', 'this task')}?",
+        "reply": llm_opening["reply"],
         "intent": "task_followup",
-    }        
+    }

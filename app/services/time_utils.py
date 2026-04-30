@@ -8,7 +8,12 @@ def extract_time_from_text(text: str) -> Optional[str]:
     Extracts a time string (e.g. "14:30") from natural language text.
     Handles basic formats like "2:30 pm", "14:30", "at 4", etc.
     """
-    text = text.lower()
+    text = text.lower().strip()
+    text = text.replace("p.m.", "pm").replace("a.m.", "am")
+    text = text.replace("p.m", "pm").replace("a.m", "am")
+    text = text.replace(".", ":")
+    text = text.replace("pm", " pm").replace("am", " am")
+    text = " ".join(text.split())
     
     # Try 12-hour format with am/pm: "2:30 pm", "2 pm", "2pm", "2:30pm"
     match = re.search(r'\b(1[0-2]|0?[1-9])(?::([0-5][0-9]))?\s*(am|pm)\b', text)
