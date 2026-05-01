@@ -826,3 +826,61 @@ def get_chat_session_messages(
         raise HTTPException(status_code=404, detail="Session not found")
 
     return ChatHistoryResponse(session_id=session_id, items=items)
+
+
+
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+class ChatbotService:
+
+    def __init__(self):
+        model_name = "microsoft/DialoGPT-medium"
+
+        print("Loading conversational model...")
+
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+
+        # store conversation history per session
+        self.sessions = {}
+
+        print("Chatbot model loaded")
+
+    def chat(self, message: str, session_id: str):
+
+        chat_history_ids = self.sessions.get(session_id)
+
+        new_input_ids = self.tokenizer.encode(
+            message + self.tokenizer.eos_token,
+            return_tensors="pt"
+        )
+
+        if chat_history_ids is not None:
+            bot_input_ids = torch.cat([chat_history_ids, new_input_ids], dim=-1)
+        else:
+            bot_input_ids = new_input_ids
+
+        output_ids = self.model.generate(
+            bot_input_ids,
+            max_length=1000,
+            pad_token_id=self.tokenizer.eos_token_id,
+            do_sample=True,
+            top_k=50,
+            top_p=0.95,
+            temperature=0.75
+        )
+
+        response = self.tokenizer.decode(
+            output_ids[:, bot_input_ids.shape[-1]:][0],
+            skip_special_tokens=True
+        )
+
+        # save conversation history
+        self.sessions[session_id] = output_ids
+
+        # placeholder values (your system already stores emotion)
+        user_emotion = "neutral"
+        intent = None
+
+        return response, user_emotion, intent
