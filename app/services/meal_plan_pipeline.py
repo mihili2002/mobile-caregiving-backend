@@ -153,6 +153,7 @@ def build_meal_plan(patient: dict) -> dict:
     # -------------------------------
     try:
         weekly_meal_plan = generate_weekly_meal_plan(nutrients, foods, patient)
+        print("RAW LLM OUTPUT:", weekly_meal_plan)
     except Exception as e:
         weekly_meal_plan = {
             "error": "LLM weekly meal plan generation failed",
