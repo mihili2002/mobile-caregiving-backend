@@ -44,11 +44,15 @@ async def get_voice_reminder(uid: str, task_id: str, forgotten: bool = False):
     temp_dir = os.path.join(os.getcwd(), "temp_audio")
     os.makedirs(temp_dir, exist_ok=True)
     audio_path = os.path.join(temp_dir, f"{uid}_{task_id}.mp3")
-    
-    # Generate audio
-    success = voice_service.generate_voice_reminder(text, category, audio_path)
-    
-    if success:
-        return FileResponse(audio_path, media_type="audio/mpeg")
-    else:
-        raise HTTPException(status_code=500, detail="Failed to generate voice reminder")
+
+    # Only regenerate if the file doesn't already exist
+    # This prevents Content-Length mismatch errors on range requests
+    if not os.path.exists(audio_path):
+        success = voice_service.generate_voice_reminder(text, category, audio_path)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to generate voice reminder")
+
+    if not os.path.exists(audio_path):
+        raise HTTPException(status_code=500, detail="Audio file not found after generation")
+
+    return FileResponse(audio_path, media_type="audio/mpeg")
