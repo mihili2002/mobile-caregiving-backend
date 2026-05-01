@@ -9,10 +9,16 @@ from app.core.firebase import get_db
 router = APIRouter(prefix="/risk", tags=["Risk Prediction"])
 
 
-@router.post("/predict", response_model=PredictResponse)
+# ====================================================
+# AI Risk Prediction
+# ====================================================
+
+@router.post("/predict")
 def predict(req: PredictRequest):
+
     # 1) Validate required ML features
     missing = [c for c in predictor.feature_columns if c not in req.features]
+
     if missing:
         raise HTTPException(status_code=400, detail={"missing_features": missing})
 
@@ -32,11 +38,16 @@ def predict(req: PredictRequest):
         "insProb": preds["Insomnia_Risk"]["probability"],
         "emoProb": preds["Emotional_WellBeing_Risk"]["probability"],
 
-        # optional levels
+        # risk levels
         "depLevel": preds["Depression_Risk"]["level"],
         "anxLevel": preds["Anxiety_Risk"]["level"],
         "insLevel": preds["Insomnia_Risk"]["level"],
         "emoLevel": preds["Emotional_WellBeing_Risk"]["level"],
+
+        # clinical review fields
+        "reviewStatus": "Pending Review",
+        "reviewedBy": None,
+        "reviewedAt": None,
 
         "createdAt": firestore.SERVER_TIMESTAMP,
         "createdAtClient": datetime.now(timezone.utc).isoformat(),
@@ -45,30 +56,40 @@ def predict(req: PredictRequest):
     # 4) Save to Firestore
     try:
         db = get_db()
+
         doc_ref = db.collection("risk_assessments").document()
+
         doc_ref.set(doc)
-        print(f"✅ Firestore saved: risk_assessments/{doc_ref.id}")
+
+        # IMPORTANT: capture the document ID
+        risk_id = doc_ref.id
+
+        print(f"Firestore saved: risk_assessments/{risk_id}")
+
     except Exception as e:
-        print("⚠️ Firestore save failed:", str(e))
+        print("Firestore save failed:", str(e))
+        raise HTTPException(status_code=500, detail="Failed to save risk assessment")
+
+    # return prediction result + risk_id
+    result["risk_id"] = risk_id
 
     return result
 
+
+# ====================================================
+# Get Risk History (for charts)
+# ====================================================
 
 @router.get("/history")
 def get_history(
     resident_id: str = Query(..., description="Resident ID"),
     days: int = Query(30, ge=1, le=365, description="How many past days to fetch"),
 ):
-    """
-    Returns risk_assessments in the last X days for this resident.
-    Used for therapist graphs.
-    """
+
     db = get_db()
 
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Firestore requires indexed query for where + order_by
-    # createdAt is server timestamp, so we filter by createdAt >= since
     try:
         from google.cloud.firestore import FieldFilter
         q = (
@@ -81,15 +102,20 @@ def get_history(
         docs = q.stream()
 
         data = []
+
         for d in docs:
+
             row = d.to_dict()
 
             created_at = row.get("createdAt")
-            # createdAt is a Firestore Timestamp, convert safely
+
             created_iso = None
+
             if created_at is not None:
                 try:
-                    created_iso = created_at.datetime.replace(tzinfo=timezone.utc).isoformat()
+                    created_iso = created_at.datetime.replace(
+                        tzinfo=timezone.utc
+                    ).isoformat()
                 except Exception:
                     created_iso = str(created_at)
 
@@ -102,10 +128,71 @@ def get_history(
                     "anxProb": row.get("anxProb"),
                     "insProb": row.get("insProb"),
                     "emoProb": row.get("emoProb"),
+                    "reviewStatus": row.get("reviewStatus", "Pending Review"),
                 }
             )
 
-        return {"resident_id": resident_id, "days": days, "count": len(data), "items": data}
+        return {
+            "resident_id": resident_id,
+            "days": days,
+            "count": len(data),
+            "items": data,
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail={"error": str(e)})
+
+
+# ====================================================
+# Approve Risk Result (Mental Health Professional)
+# ====================================================
+
+@router.post("/approve_risk_result")
+def approve_risk_result(payload: dict):
+
+    db = get_db()
+
+    risk_id = payload.get("risk_id")
+    approved_by = payload.get("approved_by", "Mental Health Professional")
+
+    if not risk_id:
+        raise HTTPException(status_code=400, detail="risk_id required")
+
+    try:
+
+        db.collection("risk_assessments").document(risk_id).update({
+            "reviewStatus": "Approved",
+            "reviewedBy": approved_by,
+            "reviewedAt": datetime.utcnow().isoformat()
+        })
+
+        return {"message": "Risk result approved"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ====================================================
+# Reject Risk Result
+# ====================================================
+
+@router.post("/reject_risk_result")
+def reject_risk_result(payload: dict):
+
+    db = get_db()
+
+    risk_id = payload.get("risk_id")
+
+    if not risk_id:
+        raise HTTPException(status_code=400, detail="risk_id required")
+
+    try:
+
+        db.collection("risk_assessments").document(risk_id).update({
+            "reviewStatus": "Rejected"
+        })
+
+        return {"message": "Risk result rejected"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
