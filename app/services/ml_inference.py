@@ -1,84 +1,94 @@
 """
-ML inference loader and wrapper.
+Central ML inference service.
 
-This module:
-- Loads trained ML models at application startup
+- Loads ALL Member1 models at startup
 - Caches them in memory
-- Exposes clean prediction helpers for FastAPI services
-
-IMPORTANT:
-- Models MUST be trained offline
-- This module ONLY loads and runs inference
+- Exposes safe prediction helpers
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Dict, Union, Any
 import joblib
 
-
-# ------------------------------------------------------------------
-# Model Registry
-# ------------------------------------------------------------------
-# Logical name -> relative path from project root
-MODEL_REGISTRY: Dict[str, str] = {
-    # Member 1 – Personalized Meal Plan / Nutrition Targets
-    "nutrition": "ml/member1_meal_plan/trained/nutrition_model.joblib",
-
-    # Example for future expansion (Member 2, 3, 4)
-    # "fall_detection": "ml/member2_fall_detection/trained/fall_model.joblib",
-    # "anomaly": "ml/member3_anomaly_detection/trained/anomaly_model.joblib",
-    # "risk": "ml/member4_risk_prediction/trained/risk_model.joblib",
-}
+# -------------------------------------------------
+# In-memory cache
+# -------------------------------------------------
+MODEL_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
-# ------------------------------------------------------------------
-# In-memory model cache
-# ------------------------------------------------------------------
-MODEL_CACHE: Dict[str, Any] = {}
-
-
-# ------------------------------------------------------------------
-# Startup loader (called once in main.py)
-# ------------------------------------------------------------------
-def init_models(base_path: str | Path = Path(".")) -> None:
+# -------------------------------------------------
+# Startup loader
+# -------------------------------------------------
+def init_models(project_root: Union[str, Path]) -> None:
     """
-    Load all registered models into memory.
-
-    Args:
-        base_path: project root (defaults to current working directory)
+    Load Member1 meal-plan models ONCE at app startup.
+    project_root MUST be the repo root that contains the `ml/` folder.
     """
-    bp = Path(base_path)
+    root = Path(project_root).resolve()
+    model_dir = root / "ml" / "member1_meal_plan" / "trained"
 
-    for model_name, rel_path in MODEL_REGISTRY.items():
-        model_path = (bp / rel_path).resolve()
+    if not model_dir.exists():
+        raise RuntimeError(
+            f"Member1 trained models directory not found: {model_dir}\n"
+            f"Given project_root={root}. Ensure project_root points to the repo root "
+            f"that contains the `ml/` folder."
+        )
 
-        if not model_path.exists():
-            print(f"[WARN] Model not found: {model_path}")
-            continue
+    required_files = [
+        "calorie_model.pkl",
+        "protein_model.pkl",
+        "carb_model.pkl",
+        "fat_model.pkl",
+        "mealplan_model.pkl",
+        "label_encoders.pkl",
+        "feature_columns.pkl",
+    ]
 
-        MODEL_CACHE[model_name] = joblib.load(model_path)
-        print(f"[INFO] Loaded model: {model_name}")
+    missing = [f for f in required_files if not (model_dir / f).exists()]
+    if missing:
+        raise RuntimeError(
+            "Member1 model files missing in trained directory:\n"
+            + "\n".join([str(model_dir / f) for f in missing])
+        )
+
+    MODEL_CACHE["member1"] = {
+        "calorie": joblib.load(model_dir / "calorie_model.pkl"),
+        "protein": joblib.load(model_dir / "protein_model.pkl"),
+        "carb": joblib.load(model_dir / "carb_model.pkl"),
+        "fat": joblib.load(model_dir / "fat_model.pkl"),
+        "mealplan": joblib.load(model_dir / "mealplan_model.pkl"),
+        "label_encoders": joblib.load(model_dir / "label_encoders.pkl"),
+        "feature_columns": joblib.load(model_dir / "feature_columns.pkl"),
+        "model_dir": str(model_dir),
+    }
+
+    print(f"[INFO] Member1 ML models loaded successfully from: {model_dir}")
 
 
-# ------------------------------------------------------------------
+def member1_ready() -> bool:
+    """Quick health check for startup logs/tests."""
+    m = MODEL_CACHE.get("member1")
+    if not m:
+        return False
+    keys = ["calorie", "protein", "carb", "fat", "mealplan", "label_encoders", "feature_columns"]
+    return all(m.get(k) is not None for k in keys)
+
+
+# -------------------------------------------------
 # Internal helper
-# ------------------------------------------------------------------
-def get_model(name: str):
-    model = MODEL_CACHE.get(name)
-    if model is None:
-        raise RuntimeError(f"Model '{name}' not loaded")
-    return model
+# -------------------------------------------------
+def _get_member1_models() -> Dict[str, Any]:
+    models = MODEL_CACHE.get("member1")
+    if not models or not member1_ready():
+        raise RuntimeError("Member1 models not loaded")
+    return models
 
 
-# ------------------------------------------------------------------
-# Member 1 – Meal Plan / Nutrition Prediction
-# ------------------------------------------------------------------
-# app/services/ml_inference.py
-
-from ml.member1_meal_plan.inference import predict_nutrition as _predict
-
+# -------------------------------------------------
+# Public API
+# -------------------------------------------------
 def predict_nutrition(features: dict) -> dict:
-    """
-    Wrapper for Member1 nutrition + meal plan prediction
-    """
-    return _predict(features)
+    from ml.member1_meal_plan.inference import predict_nutrition_core
+
+    models = _get_member1_models()
+    return predict_nutrition_core(features, models)

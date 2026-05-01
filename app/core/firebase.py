@@ -1,63 +1,49 @@
-"""
-Firebase admin initialization and helpers.
-
-This module initializes the Firebase Admin SDK for use in the API.
-The frontend authenticates users using Firebase Authentication and
-passes Firebase ID tokens to the backend. The backend verifies those
-tokens using the Firebase Admin SDK and accesses Firestore securely.
-"""
-
 import os
 from pathlib import Path
+
 import firebase_admin
-from firebase_admin import credentials, auth, firestore
+from firebase_admin import credentials, firestore, auth
 
-# Global references to avoid re-initialization
-_firebase_app = None
-db = None
+_db = None
 
-
-def init_firebase():
+def init_firebase() -> None:
     """
-    Initialize Firebase Admin SDK if not already initialized.
-
+    Initialize Firebase Admin SDK exactly once.
     Priority:
-    1. Use FIREBASE_CREDENTIALS environment variable if set
-    2. Fallback to local dev file: app/core/firebase_key.json
+    1) FIREBASE_CREDENTIALS env var
+    2) app/core/firebase_key.json
     """
+    global _db
 
-    global _firebase_app, db
-
-    # Prevent re-initialization (important for Uvicorn reload)
     if firebase_admin._apps:
+        if _db is None:
+            _db = firestore.client()
         return
 
-    # --------------------------------------------------
-    # Resolve credentials path SAFELY
-    # --------------------------------------------------
     env_path = os.environ.get("FIREBASE_CREDENTIALS")
-
     if env_path:
         cred_path = Path(env_path)
     else:
-        # Default to app/core/firebase_key.json relative to THIS file
         cred_path = Path(__file__).resolve().parent / "firebase_key.json"
 
     if not cred_path.exists():
         raise RuntimeError(
             f"Firebase credentials not found at: {cred_path}\n"
-            "Fix one of the following:\n"
-            "1) Set FIREBASE_CREDENTIALS env var to a valid JSON file\n"
-            "2) Place firebase_key.json in app/core/\n"
+            "Set FIREBASE_CREDENTIALS or place firebase_key.json in app/core/"
         )
 
-    # --------------------------------------------------
-    # Initialize Firebase Admin
-    # --------------------------------------------------
     cred = credentials.Certificate(str(cred_path))
-    _firebase_app = firebase_admin.initialize_app(cred)
+    firebase_admin.initialize_app(cred)
+    _db = firestore.client()
 
-    # Initialize Firestore client
-    db = firestore.client()
+    print(f"✅ Firebase initialized using: {cred_path}")
 
-    print(f"Firebase Admin initialized successfully using: {cred_path}")
+def get_db():
+    global _db
+    if _db is None:
+        init_firebase()
+    return _db
+
+def verify_id_token(id_token: str):
+    init_firebase()
+    return auth.verify_id_token(id_token)

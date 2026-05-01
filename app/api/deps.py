@@ -1,16 +1,14 @@
 """
-API dependencies (e.g., Firebase auth verification).
-
-Provides FastAPI dependencies to verify Firebase ID tokens.
+API dependencies (Firebase auth + role verification via Firestore).
 """
 
 from typing import List, Callable
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from firebase_admin import auth
+from firebase_admin import auth, firestore
 
-# 🔐 FastAPI security scheme (this fixes Swagger + header binding)
+# Security scheme
 security = HTTPBearer(auto_error=True)
 
 
@@ -18,15 +16,13 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
     """
-    Verify Firebase ID token from Authorization header.
-
-    Expects:
-        Authorization: Bearer <id_token>
+    Verify Firebase ID token and return decoded token.
     """
     try:
         id_token = credentials.credentials
         decoded = auth.verify_id_token(id_token)
         return decoded
+
     except Exception as exc:
         raise HTTPException(
             status_code=401,
@@ -36,23 +32,28 @@ def get_current_user(
 
 def require_role(allowed: List[str]) -> Callable:
     """
-    Return a FastAPI dependency that enforces a user's role.
-
-    The Firebase ID token is expected to have a custom claim `role`.
-    Example claims:
-        {'role': 'patient'}
-        {'role': 'doctor'}
+    Enforce role-based access using Firestore users collection.
     """
 
     def _checker(user=Depends(get_current_user)):
-        role = user.get("role") or user.get("roles")
+        uid = user.get("uid")
 
-        if isinstance(role, list):
-            is_allowed = any(r in allowed for r in role)
-        else:
-            is_allowed = role in allowed
+        if not uid:
+            raise HTTPException(status_code=401, detail="Invalid user token")
 
-        if not is_allowed:
+        # 🔹 Fetch role from Firestore
+        db = firestore.client()
+        doc = db.collection("users").document(uid).get()
+
+        if not doc.exists:
+            raise HTTPException(status_code=403, detail="User record not found")
+
+        role = doc.get("role")
+
+        print("✅ DEBUG uid:", uid)
+        print("✅ DEBUG role:", role)
+
+        if role not in allowed:
             raise HTTPException(
                 status_code=403,
                 detail="Insufficient permissions",
