@@ -6,15 +6,6 @@ from app.services.logger import log_debug
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech"
 
-# Mapping Task Categories to OpenAI Voices
-# | Task Category         | Voice Style        | Tone            | OpenAI Voice |
-# | ---------------------- | ------------------ | --------------- | ------------ |
-# | 🩺 Health & Medication | Calm Nurse Voice   | Gentle, serious | shimmer      |
-# | 🍽 Meals               | Normal Male Voice  | Friendly        | echo         |
-# | 👨👩👧 Social        | Cheerful Companion | Happy, bright   | nova         |
-# | 📖 Leisure & Therapy   | Soft Relaxed Voice | Calm, slow      | echo         |
-# | ⚠️ Urgent Alerts       | Clear Firm Voice   | Deep, fast      | onyx         |
-# | ⚙️ Common             | Default Male Voice | Neutral         | alloy        |
 
 VOICE_PROFILES = {
     "health": {
@@ -45,7 +36,7 @@ VOICE_PROFILES = {
         "gender": "female",
         "style": "cheerful, higher",
         "voice": "nova",
-        "speed": 1.5,
+        "speed": 1.1,
     },
     "leisure": {
         "gender": "male",
@@ -57,13 +48,13 @@ VOICE_PROFILES = {
         "gender": "male",
         "style": "soft, slow",
         "voice": "echo",
-        "speed": 0.8,
+        "speed": 0.9,
     },
     "urgent": {
         "gender": "male",
         "style": "deep, fast, firm",
         "voice": "onyx",
-        "speed": 1.1,
+        "speed": 1.2,
     },
     "common": {
         "gender": "male",
