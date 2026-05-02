@@ -40,10 +40,41 @@ async def get_voice_reminder(uid: str, task_id: str, forgotten: bool = False):
     else:
         text = f"Reminder, it is time for {task_name}."
     
-    # Generate audio directly in memory
-    audio_bytes = voice_service.generate_voice_reminder(text, category)
+    # Generate audio directly in memory using the new service signature
+    audio_bytes = voice_service.generate_voice_reminder(text, category, forgotten=forgotten)
     
     if audio_bytes:
         return Response(content=audio_bytes, media_type="audio/mpeg")
     else:
         raise HTTPException(status_code=500, detail="Failed to generate voice reminder")
+
+@router.get("/generate")
+async def generate_voice_from_text(text: str, category: str = "common", forgotten: bool = False):
+    """
+    General purpose endpoint to generate voice audio from raw text.
+    Used by the frontend for dynamic alerts and custom messages.
+    """
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+        
+    # Auto-infer category if it's generic to ensure correct voice profile
+    text_l = text.lower()
+    if category == "common":
+        if any(word in text_l for word in ["nap", "sleep", "rest", "leisure"]):
+            category = "leisure"
+        elif any(word in text_l for word in ["medicine", "pill", "pill", "tablet", "health", "doctor"]):
+            category = "medication"
+        elif any(word in text_l for word in ["meal", "breakfast", "lunch", "dinner", "snack"]):
+            category = "meal"
+        elif any(word in text_l for word in ["exercise", "therapy", "breathing", "walk"]):
+            category = "therapy"
+        elif any(word in text_l for word in ["call", "visit", "friend", "social"]):
+            category = "social"
+
+    # Generate audio directly in memory using the new service signature
+    audio_bytes = voice_service.generate_voice_reminder(text, category, forgotten=forgotten)
+    
+    if audio_bytes:
+        return Response(content=audio_bytes, media_type="audio/mpeg")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to generate voice audio")
