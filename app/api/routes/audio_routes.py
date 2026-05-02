@@ -57,21 +57,8 @@ async def generate_voice_from_text(text: str, category: str = "common", forgotte
     if not text:
         raise HTTPException(status_code=400, detail="Text is required")
         
-    # Auto-infer category if it's generic to ensure correct voice profile
-    text_l = text.lower()
-    if category == "common":
-        if any(word in text_l for word in ["nap", "sleep", "rest", "leisure"]):
-            category = "leisure"
-        elif any(word in text_l for word in ["medicine", "pill", "pill", "tablet", "health", "doctor"]):
-            category = "medication"
-        elif any(word in text_l for word in ["meal", "breakfast", "lunch", "dinner", "snack"]):
-            category = "meal"
-        elif any(word in text_l for word in ["exercise", "therapy", "breathing", "walk"]):
-            category = "therapy"
-        elif any(word in text_l for word in ["call", "visit", "friend", "social"]):
-            category = "social"
-
     # Generate audio directly in memory using the new service signature
+    # (We no longer auto-infer categories here to ensure 'common' tasks stay 'common')
     audio_bytes = voice_service.generate_voice_reminder(text, category, forgotten=forgotten)
     
     if audio_bytes:

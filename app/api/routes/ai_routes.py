@@ -351,10 +351,19 @@ def clean_drug_prefix(name: str) -> str:
 def infer_task_type(task_name: str) -> str:
     lower_name = (task_name or "").lower()
 
-    if any(word in lower_name for word in ["medicine", "tablet", "pill", "capsule", "medication", "dose"]):
+    if any(word in lower_name for word in ["blood pressure", "doctor", "checkup", "health", "sugar"]):
+        return "health"
+    if any(word in lower_name for word in ["medicine", "tablet", "pill", "capsule", "medication", "dose", "aspirin"]):
         return "medication"
-    if any(word in lower_name for word in ["exercise", "therapy", "stretch", "walk", "physio"]):
-        return "therapist"
+    if any(word in lower_name for word in ["meal", "breakfast", "lunch", "dinner", "snack", "eat", "food"]):
+        return "meal"
+    if any(word in lower_name for word in ["call", "visit", "friend", "social", "daughter", "son", "grandchild"]):
+        return "social"
+    if any(word in lower_name for word in ["nap", "sleep", "rest", "leisure", "relax"]):
+        return "leisure"
+    if any(word in lower_name for word in ["exercise", "therapy", "stretch", "walk", "physio", "breathing"]):
+        return "therapy"
+    
     return "common"
 
 
