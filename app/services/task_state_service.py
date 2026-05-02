@@ -101,7 +101,7 @@ def utc_now() -> datetime:
 
 
 def utc_now_iso() -> str:
-    return utc_now().isoformat()
+    return utc_now().isoformat() + "Z"
 
 
 def combine_date_time(date_str: str, time_str: str) -> datetime:
@@ -312,6 +312,12 @@ def mark_in_progress(db, schedule_doc_ref, uid: str, task_id: str, actor: str = 
 
 
 def mark_completed(db, schedule_doc_ref, uid: str, task_id: str, actor: str = "elder"):
+    # Increment version to invalidate any pending reminders
+    current_version = _get_current_reminder_version(schedule_doc_ref, task_id)
+    new_version = current_version + 1
+
+    invalidate_existing_reminders_for_task(db, schedule_doc_ref, task_id, "completed")
+
     return transition_task_status(
         db=db,
         schedule_doc_ref=schedule_doc_ref,
@@ -323,10 +329,14 @@ def mark_completed(db, schedule_doc_ref, uid: str, task_id: str, actor: str = "e
             "completed": True,
             "completedAt": utc_now_iso(),
             "completedBy": actor,
+            "reminderVersion": new_version,
+            "snoozeVersion": new_version,
+            "snoozedUntil": None,
         },
         event_type="completed",
         meta={
-            "completion_method": "voice_confirmed" if actor == "elder" else "caregiver_confirmed"
+            "completion_method": "voice_confirmed" if actor == "elder" else "caregiver_confirmed",
+            "reminder_version": new_version,
         },
         confidence="medium" if actor == "elder" else "high",
     )
@@ -425,8 +435,9 @@ def mark_skipped(
             "actor": actor,
             "caregiverSkipNote": caregiver_skip_note,
             "completed": False,
-            # Reminder invalidation markers — checked by trigger_voice_reminder
+            "snoozedUntil": None,
             "reminderVersion": current_reminder_version + 1,
+            "snoozeVersion": current_reminder_version + 1,
             "pendingReminderInvalidatedAt": utc_now_iso(),
         },
         event_type="skipped",
@@ -465,6 +476,39 @@ def mark_escalated(db, schedule_doc_ref, uid: str, task_id: str):
     )
 
 
+def _get_current_reminder_version(schedule_doc_ref, task_id: str) -> int:
+    """Helper to read current reminderVersion or snoozeVersion from Firestore."""
+    try:
+        snap = schedule_doc_ref.get()
+        if snap.exists:
+            tasks = snap.to_dict().get("tasks", [])
+            task_data = next((t for t in tasks if t.get("id") == task_id), None)
+            if task_data:
+                # Fallback to snoozeVersion for legacy tasks
+                return int(task_data.get("reminderVersion", 0) or task_data.get("snoozeVersion", 0) or 0)
+    except Exception:
+        pass
+    return 0
+
+
+def invalidate_existing_reminders_for_task(db, schedule_doc_ref, task_id: str, reason: str):
+    """
+    Cancel all existing reminder state for a task.
+    This is called before reschedule, skip, or completion to stop old reminder chains.
+    """
+    try:
+        log_task_event(
+            db=db,
+            uid="system", 
+            task_id=task_id,
+            event_type="reminders_invalidated",
+            actor="system",
+            meta={"reason": reason, "invalidatedAt": utc_now_iso()}
+        )
+    except Exception:
+        pass
+
+
 def reschedule_task_time(
     db,
     schedule_doc_ref,
@@ -475,38 +519,32 @@ def reschedule_task_time(
     valid_until_iso: str,
     actor: str = "elder",
 ):
-    # Read existing snoozeVersion so we can increment it atomically.
-    # This version stamp lets the reminder engine detect and discard
-    # any reminder that was queued before the reschedule happened.
-    current_version = 0
-    try:
-        snap = schedule_doc_ref.get()
-        if snap.exists:
-            tasks = snap.to_dict().get("tasks", [])
-            task_data = next((t for t in tasks if t.get("id") == task_id), None)
-            if task_data:
-                current_version = int(task_data.get("snoozeVersion", 0) or 0)
-    except Exception:
-        pass
-
+    # Read existing reminderVersion so we can increment it atomically.
+    current_version = _get_current_reminder_version(schedule_doc_ref, task_id)
     new_version = current_version + 1
+
+    # Invalidate old reminders before updating state
+    invalidate_existing_reminders_for_task(db, schedule_doc_ref, task_id, "rescheduled")
 
     return transition_task_status(
         db=db,
         schedule_doc_ref=schedule_doc_ref,
         uid=uid,
         task_id=task_id,
-        new_status="snoozed",
+        new_status="scheduled", # [FIX] Return to scheduled instead of snoozed
         actor=actor,
         extra_patch={
             "time": new_time_str,
-            "scheduledAt": new_datetime_iso if new_datetime_iso.endswith('Z') else new_datetime_iso + 'Z',
-            "snoozedUntil": new_datetime_iso if new_datetime_iso.endswith('Z') else new_datetime_iso + 'Z',
-            "validFrom": new_datetime_iso if new_datetime_iso.endswith('Z') else new_datetime_iso + 'Z',
-            "validUntil": valid_until_iso if valid_until_iso.endswith('Z') else valid_until_iso + 'Z',
+            "scheduledAt": new_datetime_iso,
+            "snoozedUntil": None, # [FIX] Clear snoozedUntil as per plan
+            "validFrom": new_datetime_iso,
+            "validUntil": valid_until_iso,
             "lastReminderAt": None,
+            "last_reminder_at": None,
             "retryCount": 0,
-            "snoozeVersion": new_version,
+            "reminder_count": 0,
+            "reminderVersion": new_version, # Unified version field
+            "snoozeVersion": new_version,   # Keep backward compat for now
             "acknowledgedAt": None,
             "startedAt": None,
             "completed": False,
@@ -517,10 +555,11 @@ def reschedule_task_time(
         meta={
             "new_time": new_time_str,
             "rescheduled_to": new_datetime_iso,
-            "snooze_version": new_version,
+            "reminder_version": new_version,
         },
         confidence="medium",
     )
+
 
 
 # =============================================================================
@@ -687,7 +726,7 @@ def maybe_escalate_skipped_task(
             date=date
         )
 
-    return {"notified": True if caregiver_id else False, "reason": "critical_skip" if caregiver_id else "no_caregiver_found"}
+    return {"notified": True if caregiver_id else False, "reason": "critical_skip" if caregiver_id else "no_caregiver_found", "caregiver_id": caregiver_id}
 
 
 # =============================================================================
@@ -757,30 +796,57 @@ def handle_task_skip(
                 "message": "This task cannot be skipped before its scheduled time.",
             }
 
-    # 4. Commit the skip (normalises reason internally; stamps lastSkipDecisionBy)
-    mark_skipped(
-        db=db,
-        schedule_doc_ref=schedule_doc_ref,
-        uid=uid,
-        task_id=task_id,
-        actor=actor,
-        reason=norm_reason,
-        skip_reasons=skip_reasons,
-        skip_decision_by=skip_decision_by,
-        caregiver_skip_note=caregiver_skip_note,
-    )
+    # 4. Prepare consolidated patch
+    norm_reason = normalize_skip_reason(reason)
+    now_iso = utc_now_iso()
 
-    # 5. Stamp additional state that mark_skipped doesn't handle
+    # Invalidate old reminders before updating state
+    invalidate_existing_reminders_for_task(db, schedule_doc_ref, task_id, f"skipped_{norm_reason}")
+
+    # Policy check for escalation
+    escalate_on_skip = bool(task.get("escalateOnSkip"))
+    notify_caregiver = bool(task.get("notifyCaregiverOnSkip"))
+    if notify_caregiver_override is not None:
+        notify_caregiver = notify_caregiver_override
+
+    # Repeated skip escalation logic
+    recent_skips = count_recent_skips(db, uid, task.get("task_name"), days=7)
+    if recent_skips >= 2 and task.get("type") == "medication":
+        escalate_on_skip = True
+        notify_caregiver = True
+
+    # Build the single patch
+    current_version = _get_current_reminder_version(schedule_doc_ref, task_id)
+    new_version = current_version + 1
+
+    patch = {
+        "status": "needs_caregiver_review" if escalate_on_skip else "skipped",
+        "skippedAt": now_iso,
+        "skipReason": norm_reason,
+        "skipReasons": skip_reasons,
+        "skipDecisionBy": skip_decision_by or actor,
+        "lastSkipDecisionBy": actor,
+        "actor": actor,
+        "caregiverSkipNote": caregiver_skip_note,
+        "completed": False,
+        "updatedAt": now_iso,
+        "caregiverNotified": notify_caregiver and escalate_on_skip,
+        "caregiverSkipNotified": notify_caregiver,
+        "skipReviewRequired": escalate_on_skip,
+        "skipReviewedAt": now_iso if actor == "caregiver" else None,
+        "snoozedUntil": None,
+        "reminderVersion": new_version,
+        "snoozeVersion": new_version,
+    }
+
+    # 5. Apply single atomic write
     update_task_in_schedule(
         schedule_doc_ref=schedule_doc_ref,
         task_id=task_id,
-        patch={
-            "lastSkipDecisionBy": actor,
-            "skipReviewedAt": now_iso if actor == "caregiver" else None,
-        },
+        patch=patch
     )
 
-    # 6. Audit event — records who applied the policy and why
+    # 6. Audit event
     log_task_event(
         db=db,
         uid=uid,
@@ -791,28 +857,32 @@ def handle_task_skip(
             "reason": norm_reason,
             "actor": actor,
             "task_type": task.get("type"),
-            "risk_level": task.get("riskLevel"),
-            "confirmed": confirmed,
+            "status": patch["status"],
+            "escalated": escalate_on_skip,
         },
         confidence="high",
     )
 
-    # 7. Escalation / caregiver notification
-    escalation = maybe_escalate_skipped_task(
-        db=db,
-        schedule_doc_ref=schedule_doc_ref,
-        uid=uid,
-        task=task,
-        actor=actor,
-        reason=norm_reason,
-        date=date,
-        notify_caregiver_override=notify_caregiver_override,
-    )
+    # 7. Notify caregiver if needed
+    notified = False
+    if notify_caregiver:
+        caregiver_id = get_primary_caregiver_for_elder(db, uid)
+        if caregiver_id:
+            notify_caregiver_of_skipped_task(
+                db=db,
+                caregiver_id=caregiver_id,
+                uid=uid,
+                task=task,
+                reason=norm_reason,
+                date=date
+            )
+            notified = True
 
     return {
-        "status": "skipped",
+        "status": patch["status"],
         "task_id": task_id,
         "task_name": task.get("task_name"),
         "reason": norm_reason,
-        "escalation": escalation,
+        "notified": notified
     }
+

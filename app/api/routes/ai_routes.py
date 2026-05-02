@@ -145,6 +145,7 @@ class TaskFollowupRequest(BaseModel):
     date: str
     task_id: str
     session_id: Optional[str] = None
+    reason: Optional[str] = None
 
 
 # In-memory storage for pending confirmations
@@ -349,21 +350,40 @@ def clean_drug_prefix(name: str) -> str:
 
 
 def infer_task_type(task_name: str) -> str:
+    """
+    Categorizes a task based on its name.
+    If no specific category is matched, it defaults to 'common'.
+    """
     lower_name = (task_name or "").lower()
 
-    if any(word in lower_name for word in ["blood pressure", "doctor", "checkup", "health", "sugar"]):
+    # 1. Health & Medical
+    if any(word in lower_name for word in ["blood pressure", "doctor", "checkup", "health", "sugar", "clinic", "hospital", "appointment"]):
         return "health"
-    if any(word in lower_name for word in ["medicine", "tablet", "pill", "capsule", "medication", "dose", "aspirin"]):
+    
+    # 2. Medication
+    if any(word in lower_name for word in ["medicine", "tablet", "pill", "capsule", "medication", "dose", "aspirin", "vitamin", "syrup"]):
         return "medication"
-    if any(word in lower_name for word in ["meal", "breakfast", "lunch", "dinner", "snack", "eat", "food"]):
+    
+    # 3. Meals
+    # We prioritize 'meal' but support 'meals' if plural is found
+    if "meals" in lower_name:
+        return "meals"
+    if any(word in lower_name for word in ["meal", "breakfast", "lunch", "dinner", "snack", "eat", "food", "tea", "supper"]):
         return "meal"
-    if any(word in lower_name for word in ["call", "visit", "friend", "social", "daughter", "son", "grandchild"]):
+    
+    # 4. Social
+    if any(word in lower_name for word in ["call", "visit", "friend", "social", "daughter", "son", "grandchild", "relative", "talk"]):
         return "social"
-    if any(word in lower_name for word in ["nap", "sleep", "rest", "leisure", "relax"]):
+    
+    # 5. Leisure & Rest
+    if any(word in lower_name for word in ["nap", "sleep", "rest", "relax", "meditate", "hobby", "tv", "radio"]):
         return "leisure"
-    if any(word in lower_name for word in ["exercise", "therapy", "stretch", "walk", "physio", "breathing"]):
+    
+    # 6. Therapy & Exercise
+    if any(word in lower_name for word in ["exercise", "therapy", "stretch", "walk", "physio", "breathing", "yoga", "gym"]):
         return "therapy"
     
+    # Default: Common routine tasks (e.g., cook, sewing, cleaning, gardening)
     return "common"
 
 
@@ -1418,7 +1438,8 @@ async def request_task_later(req: TaskFollowupRequest):
         "date": req.date,
         "task_name": task_name,
         "step": "llm_conversation",
-        "version": 1,          # monotonic turn counter — guards against out-of-order responses
+        "reason": req.reason,  # Store the reason for context
+        "version": 1,
     }
 
     # Use LLM to generate a warm, natural opening question
