@@ -531,12 +531,12 @@ def reschedule_task_time(
         schedule_doc_ref=schedule_doc_ref,
         uid=uid,
         task_id=task_id,
-        new_status="scheduled", # [FIX] Return to scheduled instead of snoozed
+        new_status="snoozed",
         actor=actor,
         extra_patch={
             "time": new_time_str,
             "scheduledAt": new_datetime_iso,
-            "snoozedUntil": None, # [FIX] Clear snoozedUntil as per plan
+            "snoozedUntil": new_datetime_iso,
             "validFrom": new_datetime_iso,
             "validUntil": valid_until_iso,
             "lastReminderAt": None,
