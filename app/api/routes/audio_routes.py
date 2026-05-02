@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
+from fastapi.responses import FileResponse # Kept import just in case, though unused
 import os
 from app.services.voice_service import voice_service
 from app.core.firebase import get_db
@@ -40,15 +40,10 @@ async def get_voice_reminder(uid: str, task_id: str, forgotten: bool = False):
     else:
         text = f"Reminder, it is time for {task_name}."
     
-    # Path to store audio
-    temp_dir = os.path.join(os.getcwd(), "temp_audio")
-    os.makedirs(temp_dir, exist_ok=True)
-    audio_path = os.path.join(temp_dir, f"{uid}_{task_id}.mp3")
+    # Generate audio directly in memory
+    audio_bytes = voice_service.generate_voice_reminder(text, category)
     
-    # Generate audio
-    success = voice_service.generate_voice_reminder(text, category, audio_path)
-    
-    if success:
-        return FileResponse(audio_path, media_type="audio/mpeg")
+    if audio_bytes:
+        return Response(content=audio_bytes, media_type="audio/mpeg")
     else:
         raise HTTPException(status_code=500, detail="Failed to generate voice reminder")
