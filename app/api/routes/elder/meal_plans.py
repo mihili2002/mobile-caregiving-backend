@@ -20,8 +20,8 @@ async def elder_meal_plan_dashboard(user=Depends(require_role(["elder"]))):
     # -------------------------
     current_docs = (
         db.collection("meal_plans")
-        .where(filter=FieldFilter("elder_id", "==", elder_id))\
-        .where(filter=FieldFilter("status", "==", "approved"))\
+        .where(filter=FieldFilter("elder_id", "==", elder_id))
+        .where(filter=FieldFilter("status", "==", "approved"))
         .order_by("start_date", direction="DESCENDING")
         .limit(1)
         .stream()
@@ -35,8 +35,8 @@ async def elder_meal_plan_dashboard(user=Depends(require_role(["elder"]))):
     # -------------------------
     completed_docs = (
         db.collection("meal_plans")
-        .where(filter=FieldFilter("elder_id", "==", elder_id))\
-        .where(filter=FieldFilter("status", "==", "completed"))\
+        .where(filter=FieldFilter("elder_id", "==", elder_id))
+        .where(filter=FieldFilter("status", "==", "completed"))
         .order_by("end_date", direction="DESCENDING")
         .stream()
     )
@@ -54,16 +54,51 @@ async def elder_meal_plan_dashboard(user=Depends(require_role(["elder"]))):
     )
 
     submissions = []
+    reviewer_ids = set()
+
     for d in submission_docs:
         data = d.to_dict() or {}
+        reviewer_id = data.get("reviewed_by")
+
+        if reviewer_id:
+            reviewer_ids.add(reviewer_id)
+
         submissions.append(
             {
                 "id": d.id,
                 "submitted_at": data.get("submitted_at"),
                 "reviewed_at": data.get("reviewed_at"),
-                "reviewed_by": data.get("reviewed_by"),
+                "reviewed_by": reviewer_id,  # temp store ID
                 "status": data.get("status"),
             }
+        )
+
+    # -------------------------
+    # Fetch reviewer names
+    # -------------------------
+    reviewer_map = {}
+
+    if reviewer_ids:
+        user_refs = [
+            db.collection("users").document(uid)
+            for uid in reviewer_ids
+        ]
+
+    user_docs = db.collection("users").where(
+        filter=FieldFilter("__name__", "in", user_refs)
+    ).stream()
+
+    for u in user_docs:
+        user_data = u.to_dict() or {}
+        reviewer_map[u.id] = user_data.get("name", "Unknown")
+
+    # -------------------------
+    # Replace IDs with names
+    # -------------------------
+    for submission in submissions:
+        reviewer_id = submission["reviewed_by"]
+        submission["reviewed_by"] = (
+            reviewer_map.get(reviewer_id) if reviewer_id else None
         )
 
     return {
