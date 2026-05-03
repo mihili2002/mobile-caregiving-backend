@@ -68,7 +68,7 @@ def check_missed_tasks():
             
             # 1. Filter eligible tasks
             status = task.get('status', 'scheduled')
-            if status not in ['scheduled', 'reminder_sent']:
+            if status not in ['scheduled', 'reminder_sent', 'snoozed']:
                 continue
                 
             # Skip if already completed

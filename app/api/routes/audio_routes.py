@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
+from fastapi.responses import FileResponse # Kept import just in case, though unused
 import os
 from app.services.voice_service import voice_service
 from app.core.firebase import get_db
@@ -40,19 +40,28 @@ async def get_voice_reminder(uid: str, task_id: str, forgotten: bool = False):
     else:
         text = f"Reminder, it is time for {task_name}."
     
-    # Path to store audio
-    temp_dir = os.path.join(os.getcwd(), "temp_audio")
-    os.makedirs(temp_dir, exist_ok=True)
-    audio_path = os.path.join(temp_dir, f"{uid}_{task_id}.mp3")
+    # Generate audio directly in memory using the new service signature
+    audio_bytes = voice_service.generate_voice_reminder(text, category, forgotten=forgotten)
+    
+    if audio_bytes:
+        return Response(content=audio_bytes, media_type="audio/mpeg")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to generate voice reminder")
 
-    # Only regenerate if the file doesn't already exist
-    # This prevents Content-Length mismatch errors on range requests
-    if not os.path.exists(audio_path):
-        success = voice_service.generate_voice_reminder(text, category, audio_path)
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to generate voice reminder")
-
-    if not os.path.exists(audio_path):
-        raise HTTPException(status_code=500, detail="Audio file not found after generation")
-
-    return FileResponse(audio_path, media_type="audio/mpeg")
+@router.get("/generate")
+async def generate_voice_from_text(text: str, category: str = "common", forgotten: bool = False):
+    """
+    General purpose endpoint to generate voice audio from raw text.
+    Used by the frontend for dynamic alerts and custom messages.
+    """
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+        
+    # Generate audio directly in memory using the new service signature
+    # (We no longer auto-infer categories here to ensure 'common' tasks stay 'common')
+    audio_bytes = voice_service.generate_voice_reminder(text, category, forgotten=forgotten)
+    
+    if audio_bytes:
+        return Response(content=audio_bytes, media_type="audio/mpeg")
+    else:
+        raise HTTPException(status_code=500, detail="Failed to generate voice audio")
