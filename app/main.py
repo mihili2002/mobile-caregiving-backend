@@ -35,6 +35,7 @@ from app.api.routes import (
     patients,
     caregivers,
     risk,
+    health_routes,
     ai_routes,
     schedule_routes,
     behavior_routes,
@@ -50,6 +51,7 @@ from app.api.routes.doctor import (
     dashboard as doctor_dashboard,
     meal_plans as doctor_meal_plans,
 )
+from app.api.routes.meal_plans import router as api_meal_plans_router
 
 from app.api.routes.chatbot_routes import router as chatbot_router
 from app.api.routes.therapy_routes import router as therapy_router
@@ -219,12 +221,22 @@ def startup():
         print("⚠️ load_models() failed. Reason:", str(e))
 
     # 5) Chatbot service
-    try:
-        from app.services.chatbot_service import ChatbotService
-        app.state.chatbot_service = ChatbotService()
-        print("✅ ChatbotService initialized")
-    except Exception as e:
-        print("⚠️ ChatbotService init failed. Reason:", str(e))
+    # 5) Chatbot service (FIXED - ALWAYS SAFE STATE ASSIGNMENT)
+try:
+    from app.services.chatbot_service import ChatbotService
+
+    chatbot_service = ChatbotService()
+
+    # IMPORTANT: always attach to state even if partial failure
+    app.state.chatbot_service = chatbot_service
+
+    print("✅ ChatbotService initialized")
+
+except Exception as e:
+    print("❌ ChatbotService init failed:", repr(e))
+
+    # CRITICAL: prevent runtime crash later
+    app.state.chatbot_service = None
 
    # --- Background workers (disabled in dev mode)
 try:
@@ -449,10 +461,14 @@ app.include_router(patients.router, prefix="/api")
 app.include_router(caregivers.router, prefix="/api")
 app.include_router(risk.router, prefix="/api")
 
+# Health helpers (PDF extraction)
+app.include_router(health_routes.router)
+
 app.include_router(health_submissions.router)
 app.include_router(elder_meal_plans.router)
 app.include_router(doctor_dashboard.router)
 app.include_router(doctor_meal_plans.router)
+app.include_router(api_meal_plans_router)
 
 app.include_router(chatbot_router)
 app.include_router(ai_routes.router)
