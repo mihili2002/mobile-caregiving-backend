@@ -76,7 +76,7 @@ class ChatbotService:
             self.pipeline = None
 
     # ===============================
-    # EMOTION PREDICTION
+    # EMOTION PREDICTION (UPDATED WITH MAPPING)
     # ===============================
     def predict_emotion(self, text: str) -> str:
 
@@ -94,20 +94,32 @@ class ChatbotService:
         try:
             out = self.pipeline(text)
             label = out[0][0]["label"].lower()
-
-            if label in ["joy", "happy"]:
-                return "happy"
-            if label in ["sad", "sadness"]:
-                return "sad"
-            if label in ["anger", "angry"]:
-                return "anger"
-            if label in ["fear"]:
-                return "fear"
-            if label in ["surprise", "surprised"]:
-                return "surprise"
-            if label in ["disgust"]:
-                return "disgust"
-
+            
+            # ✅ Consistent emotion mapping
+            emotion_map = {
+                "joy": "happy",
+                "happy": "happy",
+                "sadness": "sad",
+                "sad": "sad",
+                "anger": "angry",
+                "angry": "angry",
+                "fear": "fear",
+                "surprise": "surprise",
+                "surprised": "surprise",
+                "disgust": "disgust",
+                "neutral": "neutral",
+                "calm": "calm"
+            }
+            
+            # Check if label is in map
+            if label in emotion_map:
+                return emotion_map[label]
+            
+            # Try to find by partial match
+            for key, value in emotion_map.items():
+                if key in label:
+                    return value
+            
             return label
 
         except Exception as e:
@@ -159,7 +171,7 @@ class ChatbotService:
             return {"intent": None, "reply": ""}
 
     # ===============================
-    # CHAT FUNCTION (FIXED INDENTATION)
+    # CHAT FUNCTION
     # ===============================
     def chat(self, message: str, session_id: str):
 
@@ -200,7 +212,7 @@ class ChatbotService:
             intent = "fallback_nlp"
 
         # -----------------------------
-        # 4. EMOTION
+        # 4. EMOTION (using updated mapping)
         # -----------------------------
         emotion = self.predict_emotion(message)
 
