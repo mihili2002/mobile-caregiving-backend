@@ -47,6 +47,7 @@ async def get_voice_reminder(uid: str, task_id: str, forgotten: bool = False):
     
     # Generate audio
     success = voice_service.generate_voice_reminder(text, category, audio_path)
+
     
     if success:
         return FileResponse(audio_path, media_type="audio/mpeg")
