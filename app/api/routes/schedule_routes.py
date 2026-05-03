@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional, List, Any
 
 from app.services.time_utils import get_schedule_doc_id
+from app.services.task_state_service import handle_task_skip
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 
@@ -45,6 +46,16 @@ class CompleteTaskRequest(BaseModel):
     date: str
     taskId: str
 
+class SkipTaskRequest(BaseModel):
+    uid: str
+    date: str
+    taskId: str
+    reason: Optional[str] = None
+    reasons: List[str] = []
+    skip_decision_by: Optional[str] = None
+    caregiver_skip_note: Optional[str] = None
+    actor: str = "elder"
+
 @router.post("/get_schedule")
 async def get_schedule(req: GetScheduleRequest):
     try:
@@ -78,7 +89,12 @@ async def get_schedule(req: GetScheduleRequest):
                         "scheduledAt": t.get('scheduledAt') or t.get('scheduledTime'),
                         "completedAt": t.get('completedAt') or t.get('completedTime'),
                         "status": t.get('status', 'scheduled'),
-                        "graceMinutes": t.get('graceMinutes', 30)
+                        "graceMinutes": t.get('graceMinutes', 30),
+                        "skippedAt": t.get('skippedAt'),
+                        "skipReason": t.get('skipReason'),
+                        "skipReasons": t.get('skipReasons'),
+                        "skipDecisionBy": t.get('skipDecisionBy'),
+                        "caregiverSkipNote": t.get('caregiverSkipNote'),
                     }
             
             mapped_tasks = list(seen_tasks.values())
@@ -352,5 +368,51 @@ async def complete_task(req: CompleteTaskRequest):
 
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/skip")
+async def skip_task(req: SkipTaskRequest):
+    # Validation
+    if not req.reasons and not req.reason:
+        raise HTTPException(status_code=400, detail="At least one skip reason is required.")
+        
+    if (req.skip_decision_by == "caregiver" or req.actor == "caregiver") and not req.caregiver_skip_note:
+        raise HTTPException(status_code=400, detail="Caregiver note is required when a caregiver skips a task.")
+
+    try:
+        db = firestore.client()
+        uid = req.uid
+        date = req.date
+        task_id = req.taskId
+        
+        doc_id = get_schedule_doc_id(uid, date)
+        doc_ref = db.collection('schedules').document(doc_id)
+        
+        actor = req.actor or "elder"
+        # Safer option: In elder app, lock decisionBy to actor
+        skip_decision_by = req.skip_decision_by or actor
+        if actor == "elder":
+            skip_decision_by = "elder"
+
+        # Use handle_task_skip service logic
+        result = handle_task_skip(
+            db=db,
+            schedule_doc_ref=doc_ref,
+            uid=uid,
+            task_id=task_id,
+            date=date,
+            actor=actor,
+            reason=req.reason or (req.reasons[0] if req.reasons else "User skipped"),
+            skip_reasons=req.reasons,
+            skip_decision_by=skip_decision_by,
+            caregiver_skip_note=req.caregiver_skip_note,
+            confirmed=True # Assume confirmed if called from skip button
+        )
+        
+        return result
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
