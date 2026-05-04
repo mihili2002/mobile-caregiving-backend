@@ -46,6 +46,11 @@ async def doctor_dashboard(user=Depends(require_role(["doctor"]))):
     # 3️⃣ Attach meal plan ONLY for the latest submission
     for elder_id, latest_submission in latest_map.items():
         submission_id = latest_submission["id"]
+        
+        user_doc = db.collection("users").document(elder_id).get()
+        user_data = user_doc.to_dict() if user_doc.exists else {}
+
+        elder_name = user_data.get("name") or user_data.get("full_name") or "Unknown"
 
         meal_docs = (
             db.collection("meal_plans")
@@ -59,7 +64,7 @@ async def doctor_dashboard(user=Depends(require_role(["doctor"]))):
 
         rows.append({
             "elder_id": elder_id,
-            "elder_name": None,  # frontend-safe, unchanged
+            "elder_name": elder_name,  # frontend-safe, unchanged
             "latest_submission": {
                 **latest_submission,
                 "approved": latest_submission.get("approved", False),
