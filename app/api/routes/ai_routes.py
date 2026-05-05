@@ -350,6 +350,7 @@ def clean_drug_prefix(name: str) -> str:
 
 
 def infer_task_type(task_name: str) -> str:
+    # Keyword-based Heuristic Classification
     """
     Categorizes a task based on its name.
     If no specific category is matched, it defaults to 'common'.

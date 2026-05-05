@@ -37,6 +37,7 @@ def predict_labels(snippets: list[str]) -> list[str]:
 RISK_MODEL_PATH = os.path.join(BASE_DIR, "ml", "models", "reminder_probability_model_clean.joblib")
 _risk_pipeline = None
 
+# Loading the Model into Memory
 def get_pipeline():
     global _risk_pipeline
     if _risk_pipeline is None:
@@ -66,7 +67,6 @@ FEATURES = [
     "reminders_helpful_1to5",
     "reminders_right_time_1to5",
     "reminders_preference",
-    # weekly behavior fields (defaults at onboarding)
     "missed_meds_per_week",
     "missed_tasks_per_week",
     "avg_task_delay_min",
@@ -87,12 +87,9 @@ def to_tier(prob: float) -> str:
         return "Tier 2"
     return "Tier 3"
 
-def predict_elder_risk(data: dict) -> dict:
-    """
-    Predicts risk probability and tier using ML model.
-    Data should contain frontend fields (uid, age, etc).
-    Handles mapping Strings -> Ints/Category if needed.
-    """
+def predict_elder_risk(data: dict) -> dict:  
+    # Predicts risk probability and tier using ML model.
+    
     pipe = get_pipeline()
     if not pipe:
         return {"prediction_probability": 0.5, "prediction_tier": "Tier 2 (Fallback)"}

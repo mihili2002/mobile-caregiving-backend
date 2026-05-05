@@ -1,7 +1,7 @@
 import os
 try:
     import faiss
-    FAISS_AVAILABLE = True
+    FAISS_AVAILABLE = True     # FAISS (Facebook AI Similarity Search)
 except ImportError:
     FAISS_AVAILABLE = False
     print("Warning: faiss not found. Using simple fallback memory.")
@@ -20,7 +20,7 @@ except ImportError:
 # Path to save/load index and metadata
 INDEX_FILE = "memory_index.faiss"
 METADATA_FILE = "memory_metadata.json"
-MODEL_NAME = "all-MiniLM-L6-v2"
+MODEL_NAME = "all-MiniLM-L6-v2"   #Sentence Transformer to convert this sentence into a mathematical vector 
 
 class MemoryEngine:
     _instance = None
