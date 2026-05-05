@@ -110,27 +110,42 @@ async def extract_pdf(file: UploadFile = File(...), user=Depends(require_role(["
             raise HTTPException(status_code=400, detail="Empty file")
 
         prompt = """
-        Analyze this medical report PDF. Extract the patient information and return it
-        ONLY as a valid JSON object. Do not include markdown or explanations.
+            Analyze this medical report PDF. Extract the patient information and return it
+            ONLY as a valid JSON object. Do not include markdown or explanations.
 
-        Use these exact keys:
-        - age (int)
-        - gender (string: "Male" or "Female")
-        - height_cm (float)
-        - weight_kg (float)
-        - blood_pressure: { "systolic": int, "diastolic": int }
-        - chronic_conditions (list of strings)
-        - blood_sugar_mg_dl (float)
-        - cholesterol_mg_dl (float)
-        - dietary_habit (string: "Vegetarian", "Vegan", "Non-Vegetarian")
-        - preferred_cuisine (string)
-        - food_allergies (string)
-        - caloric_intake (float)
-        - protein_intake (float)
-        - carbohydrate_intake (float)
-        - fat_intake (float)
-        If a field is not found, set it to null.
-        """
+            Use these exact keys:
+            - age (int)
+            - gender (string: "Male" or "Female")
+            - height_cm (float)
+            - weight_kg (float)
+            - blood_pressure: { "systolic": int, "diastolic": int }
+            - chronic_conditions (list of strings)
+
+            IMPORTANT:
+            For chronic_conditions, use ONLY these exact values:
+            ["Diabetes", "Hypertension", "Heart Disease"]
+
+            Rules:
+            - If the report says "High Blood Pressure", return "Hypertension".
+            - If the report says "BP", "high BP", or "blood pressure problem", return "Hypertension".
+            - If the report says "Heart condition", "Cardiac disease", or similar, return "Heart Disease".
+            - If the report says "No chronic conditions" or "None", return [].
+            - Do not return "None" inside chronic_conditions.
+            - Do not return any value outside the allowed list.
+
+            Other keys:
+            - blood_sugar_mg_dl (float)
+            - cholesterol_mg_dl (float)
+            - dietary_habit (string: "Vegetarian", "Vegan", "Non-Vegetarian")
+            - preferred_cuisine (string)
+            - food_allergies (string)
+            - caloric_intake (float)
+            - protein_intake (float)
+            - carbohydrate_intake (float)
+            - fat_intake (float)
+
+            If a field is not found, set it to null.
+            """
 
         model = genai.GenerativeModel("gemini-2.5-flash")
 
