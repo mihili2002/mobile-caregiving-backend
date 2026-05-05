@@ -268,23 +268,25 @@ def export_plan_pdf(plan_id: str):
 
 @router.get("/get_active_plan/{resident_id}")
 def get_active_plan(resident_id: str):
-
     try:
-
         plans = (
             db.collection("personalized_plans")
             .where("residentId", "==", resident_id)
-            .limit(5)
             .stream()
         )
 
+        active_plans = []
         for doc in plans:
             data = doc.to_dict()
-
             if data.get("status") == "Active":
-                return data
+                active_plans.append(data)
 
-        return {"message": "No approved plan found"}
+        if not active_plans:
+            return {"message": "No approved plan found"}
+
+        # Sort by generatedAt descending
+        active_plans.sort(key=lambda x: x.get("generatedAt", ""), reverse=True)
+        return active_plans[0]
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -296,26 +298,27 @@ def get_active_plan(resident_id: str):
 
 @router.get("/get_plan_by_email/{email}")
 def get_plan_by_email(email: str):
-
     try:
-
-        email = unquote(email)   # ⭐ FIX: convert %40 → @
+        email = unquote(email)
 
         plans = (
             db.collection("personalized_plans")
             .where("elderEmail", "==", email)
-            .limit(5)
             .stream()
         )
 
+        active_plans = []
         for doc in plans:
-
             data = doc.to_dict()
-
             if data.get("status") == "Active":
-                return data
+                active_plans.append(data)
 
-        raise HTTPException(status_code=404, detail="No active plan found")
+        if not active_plans:
+            raise HTTPException(status_code=404, detail="No active plan found")
+
+        # Sort by generatedAt descending
+        active_plans.sort(key=lambda x: x.get("generatedAt", ""), reverse=True)
+        return active_plans[0]
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
